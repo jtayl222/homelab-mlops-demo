@@ -1,0 +1,105 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: iris-demo-
+spec:
+  entrypoint: iris-pipeline
+  volumeClaimTemplates:        # temp storage for artefacts
+  - metadata:
+      name: workdir
+    spec:
+      storageClassName: nfs-client
+      accessModes: ["ReadWriteMany"]
+      resources:
+        requests:
+          storage: 1Gi
+  templates:
+  - name: iris-pipeline
+    dag:
+      tasks:
+      - name: train
+        template: train
+      - name: build-image
+        dependencies: [train]
+        template: kaniko
+      - name: deploy
+        dependencies: [build-image]
+        template: deploy
+        arguments:
+          parameters:
+          - name: image-tag
+            value: "{{tasks.build-image.outputs.parameters.image-tag}}"
+
+  # --- Task templates ---
+  - name: train
+    container:
+      image: python:3.11-slim
+      command: ["python", "/src/train.py"]
+      env:
+      - name: MLFLOW_TRACKING_URI
+        value: "http://mlflow.mlflow.svc.cluster.local:5000"
+      volumeMounts:
+      - name: workdir
+        mountPath: /output
+      - name: src
+        mountPath: /src
+    volumes:
+    - name: src
+      configMap:
+        name: iris-src   # we'll create this ConfigMap with train.py
+
+  - name: kaniko
+    outputs:
+      parameters:
+      - name: image-tag
+        valueFrom:
+          path: /tmp/image_tag.txt
+    container:
+      image: gcr.io/kaniko-project/executor:v1.23.0
+      args:
+      - --context=/workspace
+      - --dockerfile=/workspace/Dockerfile
+      - --destination=ghcr.io/jtayl222/iris:{{workflow.creationTimestamp}}
+      - --tarPath=/tmp/image.tar
+      - --push-retry=5
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+    securityContext:
+      privileged: true
+
+  - name: deploy
+    inputs:
+      parameters:
+      - name: image-tag
+    container:
+      image: bitnami/kubectl:1.30
+      command: [sh, -c]
+      args:
+      - |
+        cat <<EOF > /tmp/seldon.yaml
+        apiVersion: machinelearning.seldon.io/v1
+        kind: SeldonDeployment
+        metadata:
+          name: iris
+        spec:
+          predictors:
+          - name: rf
+            replicas: 1
+            graph:
+              implementation: MODEL_SERVER
+              modelUri: s3://mlflow/0/{{inputs.parameters.image-tag}}/artifacts/model
+              envSecretRefName: minio-secret
+              serviceAccountName: seldon
+              parameters:
+              - name: MODEL_IMAGE
+                type: STRING
+                value: ghcr.io/jtayl222/iris:{{inputs.parameters.image-tag}}
+            componentSpecs:
+            - spec:
+                containers:
+                - name: rf
+                  image: ghcr.io/jtayl222/iris:{{inputs.parameters.image-tag}}
+                  imagePullPolicy: IfNotPresent
+        EOF
+        kubectl apply -f /tmp/seldon.yaml
