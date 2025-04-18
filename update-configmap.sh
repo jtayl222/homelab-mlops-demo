@@ -1,5 +1,5 @@
 
-kubectl -n argo \
+kubectl -n argowf \
   create configmap iris-src \
   --from-file=Dockerfile=demo_iris_pipeline/Dockerfile \
   --from-file=requirements.txt=demo_iris_pipeline/requirements.txt \
