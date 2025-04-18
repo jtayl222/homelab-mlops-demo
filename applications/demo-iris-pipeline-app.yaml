@@ -12,7 +12,7 @@ spec:
     path: demo_iris_pipeline  # <- directory that contains workflow.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: argo
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
