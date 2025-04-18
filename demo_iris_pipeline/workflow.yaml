@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: iris-demo-
+  name: iris-demo
 spec:
   entrypoint: iris-pipeline
   # Add volumes at workflow level
