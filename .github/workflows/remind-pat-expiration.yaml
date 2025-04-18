@@ -1,0 +1,25 @@
+name: PAT Expiration Reminder
+on:
+  schedule:
+    - cron: '0 12 * * *'  # every day at 12:00 UTC
+  workflow_dispatch: # allow manual trigger too
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PAT expiration
+        run: |
+          TODAY=$(date -u +"%Y-%m-%d")
+          EXPIRY_DATE="${{ secrets.GH_PAT_EXPIRES }}"
+          DAYS_LEFT=$(( ( $(date -d "$EXPIRY_DATE" +%s) - $(date -d "$TODAY" +%s) ) / 86400 ))
+
+          echo "Today is $TODAY"
+          echo "Token expires on $EXPIRY_DATE"
+          echo "Days left: $DAYS_LEFT"
+
+          if [ "$DAYS_LEFT" -le 10 ]; then
+            echo "::warning title=PAT Expiring Soon::Your GitHub PAT (GH_PAT) will expire in $DAYS_LEFT days! Please rotate it."
+          else
+            echo "✅ Token is still valid for $DAYS_LEFT days."
+          fi
