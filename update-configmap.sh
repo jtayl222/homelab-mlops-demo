@@ -1,10 +1,13 @@
 #!/bin/bash
 # update-configmap.sh
 
-# Ensure we fail fast
 set -e
 
-# Generate the updated ConfigMap YAML and save it
-kubectl create configmap iris-src --from-file=demo_iris_pipeline/ --dry-run=client -o yaml > applications/iris-src-configmap.yaml
+kubectl create configmap iris-src \
+  --from-file=serve.py=demo_iris_pipeline/serve.py \
+  --from-file=train.py=demo_iris_pipeline/train.py \
+  --from-file=requirements.txt=demo_iris_pipeline/requirements.txt \
+  --from-file=Dockerfile=demo_iris_pipeline/Dockerfile \
+  --dry-run=client -o yaml > applications/iris-src-configmap.yaml
 
-echo "ConfigMap applications/iris-src-configmap.yaml updated. Please commit and push it to GitHub."
+echo "✅ ConfigMap regenerated at applications/iris-src-configmap.yaml"

@@ -1,0 +1,38 @@
+name: Auto Update Iris ConfigMap
+
+on:
+  push:
+    paths:
+      - 'demo_iris_pipeline/**'
+      - 'update-configmap.sh'
+    branches:
+      - main
+
+jobs:
+  update-configmap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl (local only, not cluster access needed)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y kubectl
+
+      - name: Run update-configmap.sh
+        run: |
+          bash update-configmap.sh
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add applications/iris-src-configmap.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "Auto-update iris-src ConfigMap"
+            git push
+          else
+            echo "No changes to commit."
+          fi
