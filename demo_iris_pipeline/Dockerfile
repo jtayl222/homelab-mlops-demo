@@ -1,12 +1,18 @@
-FROM --platform=$BUILDPLATFORM python:3.12-slim AS builder
+FROM python:3.12-slim
+
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip wheel --no-deps -r requirements.txt
 
-FROM --platform=$TARGETPLATFORM python:3.12-slim
-WORKDIR /app
+# Install dependencies directly
+RUN pip install -r requirements.txt
+
+# Copy application files
+COPY serve.py .
+COPY model/ /model/
+
+# Set environment variables
 ENV PYTHONUNBUFFERED=1
-COPY --from=builder /root/.cache/pip /wheels
-RUN pip install --no-index /wheels/*
-COPY model_server.py .
-CMD ["python", "model_server.py"]
+ENV GIT_PYTHON_REFRESH=quiet
+
+# Run the server
+CMD ["python", "serve.py"]

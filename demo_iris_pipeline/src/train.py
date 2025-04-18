@@ -20,10 +20,12 @@ with mlflow.start_run():
     mlflow.log_metric("accuracy", acc)
 
     # save artefact for downstream image build
-    os.makedirs("model", exist_ok=True)
-    with open("model/model.pkl", "wb") as f:
+    os.makedirs("/output/model", exist_ok=True)
+    model_path = "/output/model/model.pkl"
+    print(f"Saving model to {model_path}")
+    with open(model_path, "wb") as f:
         pickle.dump(clf, f)
-    mlflow.log_artifacts("model")
+    mlflow.log_artifacts("/output/model")
 
     # write a tiny JSON so the next step knows where the artefact is
     run_id = mlflow.active_run().info.run_id
