@@ -223,3 +223,24 @@ spec:
                 value: /model/model.pkl
         EOF
         kubectl apply -f /tmp/seldon.yaml
+
+---
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: homelab-mlops-demo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: main
+    path: demo_iris_pipeline
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo  # Change this to the namespace where Argo Workflows runs
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
