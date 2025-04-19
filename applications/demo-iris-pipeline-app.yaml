@@ -3,7 +3,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: homelab-mlops-demo
-  namespace: argocd
+  namespace: argocd  # This is correct - ArgoCD apps live in argocd namespace
 spec:
   project: default
   source:
@@ -12,7 +12,7 @@ spec:
     path: demo_iris_pipeline  # <- directory that contains workflow.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: argowf  # Change this to argowf - where workflows run
   syncPolicy:
     automated:
       prune: true
