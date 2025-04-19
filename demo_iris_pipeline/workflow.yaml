@@ -239,7 +239,7 @@ spec:
     path: demo_iris_pipeline
   destination:
     server: https://kubernetes.default.svc
-    namespace: argo  # Change this to the namespace where Argo Workflows runs
+    namespace: argowf  # Change this to the namespace where Argo Workflows runs
   syncPolicy:
     automated:
       prune: true
