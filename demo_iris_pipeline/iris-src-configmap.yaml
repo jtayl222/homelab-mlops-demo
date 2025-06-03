@@ -82,7 +82,7 @@ data:
   workflow.yaml: "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata:\n  name:
     iris-demo\nspec:\n  entrypoint: iris-pipeline\n  # Add volumes at workflow level\n
     \ volumes:\n  - name: src\n    configMap:\n      name: iris-src\n  volumeClaimTemplates:\n
-    \ - metadata:\n      name: workdir\n    spec:\n      storageClassName: nfs-client\n
+    \ - metadata:\n      name: workdir\n    spec:\n      storageClassName: nfs-shared\n
     \     accessModes: [ReadWriteMany]\n      resources:\n        requests:\n          storage:
     1Gi\n  templates:\n  - name: iris-pipeline\n    dag:\n      tasks:\n      - name:
     train\n        template: train\n      - name: build-image\n        dependencies:

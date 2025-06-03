@@ -13,7 +13,7 @@ spec:
   - metadata:
       name: workdir
     spec:
-      storageClassName: nfs-client
+      storageClassName: nfs-shared
       accessModes: [ReadWriteMany]
       resources:
         requests:
