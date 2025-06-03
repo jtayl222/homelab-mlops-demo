@@ -76,7 +76,7 @@ spec:
         value: "quiet"
       envFrom:
       - secretRef:
-          name: minio-credentials
+          name: minio-credentials-wf
     volumes:
     - name: src
       configMap:

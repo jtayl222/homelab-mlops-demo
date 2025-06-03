@@ -103,7 +103,7 @@ data:
     name: workdir\n        mountPath: /output\n      - name: src\n        mountPath:
     /src\n      env:\n      - name: MLFLOW_TRACKING_URI\n        value: \"http://mlflow.mlflow.svc.cluster.local:5000\"\n
     \     - name: GIT_PYTHON_REFRESH\n        value: \"quiet\"\n      envFrom:\n      -
-    secretRef:\n          name: minio-credentials\n    volumes:\n    - name: src\n
+    secretRef:\n          name: minio-credentials-wf\n    volumes:\n    - name: src\n
     \     configMap:\n        name: iris-src\n\n  - name: kaniko\n    outputs:\n      parameters:\n
     \     - name: image-tag\n        valueFrom:\n          path: /workspace/image_tag.txt\n
     \   container:\n      image: gcr.io/kaniko-project/executor:v1.23.0\n      resources:\n
