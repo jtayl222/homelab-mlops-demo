@@ -52,7 +52,7 @@ data:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import accuracy_score
 
-    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])  # http://mlflow.mlflow.svc:5000
+    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment("iris_demo")
 
     with mlflow.start_run():
@@ -67,18 +67,25 @@ data:
         mlflow.log_param("n_estimators", n_estimators)
         mlflow.log_metric("accuracy", acc)
 
-        # save artefact for downstream image build
-        os.makedirs("/tmp/model", exist_ok=True)
-        model_path = "/tmp/model/model.pkl"
+        # Save model to /output/model/ instead of /tmp/model/
+        os.makedirs("/output/model", exist_ok=True)
+        model_path = "/output/model/model.pkl"
         print(f"Saving model to {model_path}")
         with open(model_path, "wb") as f:
             pickle.dump(clf, f)
-        mlflow.log_artifacts("/tmp/model")
+        mlflow.log_artifacts("/output/model")
 
-        # write a tiny JSON so the next step knows where the artefact is
+        # Write run info to the writable home directory first, then copy
         run_id = mlflow.active_run().info.run_id
-        with open("/output/run_info.json", "w") as f:
+        # Write to home directory first
+        with open("/home/jovyan/run_info.json", "w") as f:
             json.dump({"run_id": run_id}, f)
+        
+        # Then copy to output with proper permissions
+        import shutil
+        shutil.copy("/home/jovyan/run_info.json", "/output/run_info.json")
+        
+        print("Training complete with accuracy:", acc)
   workflow.yaml: "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata:\n  name:
     iris-demo\nspec:\n  entrypoint: iris-pipeline\n  # Add volumes at workflow level\n
     \ volumes:\n  - name: src\n    configMap:\n      name: iris-src\n  volumeClaimTemplates:\n
@@ -90,25 +97,24 @@ data:
     [build-image]\n        template: deploy\n        arguments:\n          parameters:\n
     \         - name: image-tag\n            value: '{{tasks.build-image.outputs.parameters.image-tag}}'\n\n
     \ - name: train\n    container:\n      image: jupyter/scipy-notebook:python-3.11\n
-    \     # Add resource requests and limits\n      resources:\n        requests:\n
-    \         memory: \"2Gi\"\n          cpu: \"1\"\n        limits:\n          memory:
-    \"4Gi\"\n          cpu: \"2\"\n      command: [\"/bin/bash\", \"-c\"]\n      args:\n
-    \       - |\n          # Fix the backports issue\n          pip uninstall -y backports.tarfile\n
-    \         pip install backports.tarfile\n\n          # Install setuptools first,
-    before anything else\n          pip install setuptools==78.1.0 boto3==1.37.34\n
-    \         \n          # Copy requirements.txt from configmap\n          cp /src/requirements.txt
-    /tmp/requirements.txt\n          \n          # Install packages from requirements.txt\n
-    \         pip install -r /tmp/requirements.txt\n          \n          # Run the
-    training script\n          python /src/train.py\n      volumeMounts:\n      -
-    name: workdir\n        mountPath: /output\n      - name: src\n        mountPath:
-    /src\n      env:\n      - name: MLFLOW_TRACKING_URI\n        value: \"http://mlflow.mlflow.svc.cluster.local:5000\"\n
-    \     - name: GIT_PYTHON_REFRESH\n        value: \"quiet\"\n      envFrom:\n      -
-    secretRef:\n          name: minio-credentials-wf\n    volumes:\n    - name: src\n
-    \     configMap:\n        name: iris-src\n\n  - name: kaniko\n    outputs:\n      parameters:\n
-    \     - name: image-tag\n        valueFrom:\n          path: /workspace/image_tag.txt\n
-    \   container:\n      image: gcr.io/kaniko-project/executor:v1.23.0\n      resources:\n
-    \       requests:\n          memory: \"2Gi\"\n          cpu: \"1\"\n        limits:\n
-    \         memory: \"4Gi\"\n          cpu: \"2\"\n      args:\n      - --context=/workspace\n
+    \     # Add this to run as root initially to fix permissions\n      securityContext:\n
+    \        runAsUser: 0\n        runAsGroup: 0\n      command: [\"/bin/bash\", \"-c\"]\n
+    \      args:\n        - |\n          # Fix permissions on the output directory\n
+    \         chown -R 1000:100 /output\n        \n          # Switch to jovyan user
+    for the rest\n          su jovyan -c \"\n          # Fix the backports issue\n
+    \         pip uninstall -y backports.tarfile\n          pip install backports.tarfile\n
+    \n          # Install packages\n          pip install setuptools==78.1.0 boto3==1.37.34\n
+    \         cp /src/requirements.txt /tmp/requirements.txt\n          pip install
+    -r /tmp/requirements.txt\n          \n          # Run the training script\n          python
+    /src/train.py\n          \"\n      volumeMounts:\n      - name: workdir\n        mountPath: /output\n
+    \      - name: src\n        mountPath: /src\n      env:\n      - name: MLFLOW_TRACKING_URI\n
+    \        value: \"http://mlflow.mlflow.svc.cluster.local:5000\"\n      - name: GIT_PYTHON_REFRESH\n
+    \        value: \"quiet\"\n      envFrom:\n      - secretRef:\n          name: minio-credentials-wf\n
+    \    volumes:\n    - name: src\n     configMap:\n        name: iris-src\n\n  - name:
+    kaniko\n    outputs:\n      parameters:\n     - name: image-tag\n        valueFrom:\n
+    \          path: /workspace/image_tag.txt\n   container:\n      image: gcr.io/kaniko-project/executor:v1.23.0\n
+    \      resources:\n        requests:\n          memory: \"2Gi\"\n          cpu: \"1\"\n
+    \        limits:\n          memory: \"4Gi\"\n          cpu: \"2\"\n      args:\n      - --context=/workspace\n
     \     - --dockerfile=/workspace/Dockerfile\n      # Use a hardcoded tag that matches
     what we'll set in the init container\n      - --destination=ghcr.io/jtayl222/iris:latest\n
     \     - --tarPath=/tmp/image.tar\n      - --push-retry=5\n      - --verbosity=debug\n
@@ -159,5 +165,4 @@ data:
     \       kubectl apply -f /tmp/seldon.yaml\n"
 kind: ConfigMap
 metadata:
-  creationTimestamp: null
   name: iris-src
