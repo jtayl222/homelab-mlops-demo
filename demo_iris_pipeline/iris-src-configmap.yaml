@@ -68,12 +68,12 @@ data:
         mlflow.log_metric("accuracy", acc)
 
         # save artefact for downstream image build
-        os.makedirs("/output/model", exist_ok=True)
-        model_path = "/output/model/model.pkl"
+        os.makedirs("/tmp/model", exist_ok=True)
+        model_path = "/tmp/model/model.pkl"
         print(f"Saving model to {model_path}")
         with open(model_path, "wb") as f:
             pickle.dump(clf, f)
-        mlflow.log_artifacts("/output/model")
+        mlflow.log_artifacts("/tmp/model")
 
         # write a tiny JSON so the next step knows where the artefact is
         run_id = mlflow.active_run().info.run_id
@@ -125,13 +125,13 @@ data:
     /workspace/\n        cp /src/requirements.txt /workspace/\n        \n        #
     Debug output to check if model exists in output directory\n        echo \"Listing
     output directory:\"\n        ls -la /output\n        echo \"Listing output/model
-    directory:\"\n        ls -la /output/model || echo \"No model directory in output\"\n
+    directory:\"\n        ls -la /tmp/model || echo \"No model directory in output\"\n
     \       \n        # Make sure model directory exists in workspace\n        mkdir
     -p /workspace/model\n        \n        # Copy model from output volume (adjust
     path based on how train.py saves it)\n        # Try different possible locations
-    where the model might be\n        if [ -f \"/output/model/model.pkl\" ]; then\n
-    \         cp /output/model/model.pkl /workspace/model/\n        elif [ -f \"/output/model.pkl\"
-    ]; then\n          mkdir -p /workspace/model\n          cp /output/model.pkl /workspace/model/\n
+    where the model might be\n        if [ -f \"/tmp/model/model.pkl\" ]; then\n
+    \         cp /tmp/model/model.pkl /workspace/model/\n        elif [ -f \"/tmp/model.pkl\"
+    ]; then\n          mkdir -p /workspace/model\n          cp /tmp/model.pkl /workspace/model/\n
     \       elif [ -f \"/output/workdir/model/model.pkl\" ]; then\n          cp /output/workdir/model/model.pkl
     /workspace/model/\n        else\n          echo \"Model file not found in expected
     locations\"\n          find /output -name \"model.pkl\" -type f\n          exit

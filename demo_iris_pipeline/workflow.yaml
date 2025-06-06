@@ -141,18 +141,18 @@ spec:
         echo "Listing output directory:"
         ls -la /output
         echo "Listing output/model directory:"
-        ls -la /output/model || echo "No model directory in output"
+        ls -la /tmp/model || echo "No model directory in output"
         
         # Make sure model directory exists in workspace
         mkdir -p /workspace/model
         
         # Copy model from output volume (adjust path based on how train.py saves it)
         # Try different possible locations where the model might be
-        if [ -f "/output/model/model.pkl" ]; then
-          cp /output/model/model.pkl /workspace/model/
-        elif [ -f "/output/model.pkl" ]; then
+        if [ -f "/tmp/model/model.pkl" ]; then
+          cp /tmp/model/model.pkl /workspace/model/
+        elif [ -f "/tmp/model.pkl" ]; then
           mkdir -p /workspace/model
-          cp /output/model.pkl /workspace/model/
+          cp /tmp/model.pkl /workspace/model/
         elif [ -f "/output/workdir/model/model.pkl" ]; then
           cp /output/workdir/model/model.pkl /workspace/model/
         else
