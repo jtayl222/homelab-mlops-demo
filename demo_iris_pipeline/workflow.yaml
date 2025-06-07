@@ -38,7 +38,9 @@ spec:
   - name: train
     container:
       image: jupyter/scipy-notebook:python-3.11
-      # Add resource requests and limits
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
       resources:
         requests:
           memory: "2Gi"
@@ -49,21 +51,23 @@ spec:
       command: ["/bin/bash", "-c"]
       args:
         - |
-          # Fix the backports issue
+          # Fix permissions on the output directory
+          set -x
+          mount
+          df -h /output
+          chown -R 1000:100 /output
+          
+          # Switch to jovyan user with proper environment
+          su jovyan -c "
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate base
           pip uninstall -y backports.tarfile
           pip install backports.tarfile
-
-          # Install setuptools first, before anything else
           pip install setuptools==78.1.0 boto3==1.37.34
-          
-          # Copy requirements.txt from configmap
           cp /src/requirements.txt /tmp/requirements.txt
-          
-          # Install packages from requirements.txt
           pip install -r /tmp/requirements.txt
-          
-          # Run the training script
           python /src/train.py
+          "
       volumeMounts:
       - name: workdir
         mountPath: /output
@@ -146,15 +150,9 @@ spec:
         # Make sure model directory exists in workspace
         mkdir -p /workspace/model
         
-        # Copy model from output volume (adjust path based on how train.py saves it)
-        # Try different possible locations where the model might be
-        if [ -f "/tmp/model/model.pkl" ]; then
-          cp /tmp/model/model.pkl /workspace/model/
-        elif [ -f "/tmp/model.pkl" ]; then
-          mkdir -p /workspace/model
-          cp /tmp/model.pkl /workspace/model/
-        elif [ -f "/output/workdir/model/model.pkl" ]; then
-          cp /output/workdir/model/model.pkl /workspace/model/
+        # Copy model from output volume
+        if [ -f "/output/model/model.pkl" ]; then
+          cp /output/model/model.pkl /workspace/model/
         else
           echo "Model file not found in expected locations"
           find /output -name "model.pkl" -type f
@@ -224,23 +222,4 @@ spec:
         EOF
         kubectl apply -f /tmp/seldon.yaml
 
----
 
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: homelab-mlops-demo
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
-    targetRevision: main
-    path: demo_iris_pipeline
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argowf  # Change this to the namespace where Argo Workflows runs
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true

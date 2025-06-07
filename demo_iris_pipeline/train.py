@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
-mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])  # http://mlflow.mlflow.svc:5000
+mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_experiment("iris_demo")
 
 with mlflow.start_run():
@@ -19,15 +19,17 @@ with mlflow.start_run():
     mlflow.log_param("n_estimators", n_estimators)
     mlflow.log_metric("accuracy", acc)
 
-    # save artefact for downstream image build
-    os.makedirs("/tmp/model", exist_ok=True)
-    model_path = "/tmp/model/model.pkl"
+    # Save model to /output/model/ (not /tmp/model/)
+    os.makedirs("/output/model", exist_ok=True)
+    model_path = "/output/model/model.pkl"
     print(f"Saving model to {model_path}")
     with open(model_path, "wb") as f:
         pickle.dump(clf, f)
-    mlflow.log_artifacts("/tmp/model")
+    mlflow.log_artifacts("/output/model")
 
-    # write a tiny JSON so the next step knows where the artefact is
+    # Write run info
     run_id = mlflow.active_run().info.run_id
     with open("/output/run_info.json", "w") as f:
         json.dump({"run_id": run_id}, f)
+    
+    print("Training complete with accuracy:", acc)
