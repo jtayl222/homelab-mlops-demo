@@ -145,20 +145,34 @@ Ensure the following secrets exist in the `argowf` namespace:
 
 ## Quick Start
 
-### 1. Deploy Infrastructure Components
+### 1. Login to ArgoCD
+```bash
+# Get admin password (if needed)
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d && echo
+
+# Login to ArgoCD
+argocd login <argocd-server-ip:port>
+# When prompted, use username 'admin' and the password from above
+
+# Verify connection
+argocd app list
+```
+
+### 2. Deploy Infrastructure Components
 ```bash
 # Apply RBAC configurations
 kubectl apply -f applications/argocd-workflow-rbac.yaml
 kubectl apply -f applications/argowf-seldon-rbac.yaml
 ```
 
-### 2. Deploy the MLOps Application
+### 3. Deploy the MLOps Application
 ```bash
 # Create the ArgoCD application
 kubectl apply -f applications/demo-iris-pipeline-app.yaml
 ```
 
-### 3. Generate and Apply ConfigMap
+### 4. Generate and Apply ConfigMap
 ```bash
 # Generate ConfigMap with source files
 ./update-configmap.sh
@@ -167,7 +181,7 @@ kubectl apply -f applications/demo-iris-pipeline-app.yaml
 kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
 ```
 
-### 4. Run the ML Pipeline
+### 5. Run the ML Pipeline
 ```bash
 # Submit workflow directly (for testing)
 argo submit demo_iris_pipeline/workflow.yaml -n argowf --watch
@@ -176,7 +190,7 @@ argo submit demo_iris_pipeline/workflow.yaml -n argowf --watch
 argocd app sync homelab-mlops-demo
 ```
 
-### 5. Access Services
+### 6. Access Services
 - **ArgoCD UI**: Check deployment status and sync operations
 - **Argo Workflows UI**: Monitor pipeline execution at `http://<cluster-ip>:2746`
 - **MLflow UI**: View experiment tracking and model metrics
@@ -257,6 +271,10 @@ kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml --dry-run=client
 
 #### 3. Test Workflow Validation
 ```bash
+# Ensure ArgoCD is authenticated
+argocd login <argocd-server-url>  # Login if needed
+argocd app list                   # Verify connection
+
 # Delete any existing test workflows first
 argo -n argowf list
 argo -n argowf delete iris-demo
@@ -488,6 +506,9 @@ argo submit demo_iris_pipeline/workflow.yaml -n argowf --watch  # Submit workflo
 
 ### ArgoCD Management  
 ```bash
+# Login first (if needed)
+argocd login <argocd-server-url>
+
 argocd app list                        # List applications
 argocd app get homelab-mlops-demo      # Get app details
 argocd app sync homelab-mlops-demo     # Sync application
@@ -531,6 +552,66 @@ argocd app sync homelab-mlops-demo
 
 # Or use the Ansible playbook
 ansible-playbook install_200_deploy_mlops_demo_app.yml
+```
+
+## Resource Monitoring & Performance
+
+### Check Resource Usage
+```bash
+# Monitor workflow pod resource usage
+kubectl top pods -n argowf
+
+# Check node resource availability
+kubectl top nodes
+
+# View resource requests/limits for workflow
+kubectl describe workflow iris-demo -n argowf | grep -A 10 "resources"
+
+# Check for resource-related events
+kubectl get events -n argowf --sort-by='.lastTimestamp' | tail -10
+```
+
+### Debug Resource Issues
+```bash
+# Check if pods are being evicted due to resource pressure
+kubectl get events -n argowf | grep -i "evict\|oom\|memory\|cpu"
+
+# View detailed pod resource usage
+kubectl describe pod -n argowf iris-demo-<step-name>
+
+# Check for resource quotas
+kubectl describe resourcequota -n argowf
+```
+
+### Common Resource-Related Errors
+
+**"unexpected end of JSON input" Error**:
+- Often indicates API timeouts due to resource pressure
+- Check if build step (Kaniko) has enough CPU/memory
+- Verify cluster has available resources
+
+**Build Step Failures**:
+```bash
+# Increase Kaniko resources in workflow.yaml
+resources:
+  requests:
+    memory: "4Gi"
+    cpu: "2"
+  limits:
+    memory: "8Gi" 
+    cpu: "4"
+```
+
+**Deploy Step Failures**:
+```bash
+# Check kubectl container resources
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "500m"
+  limits:
+    memory: "1Gi"
+    cpu: "1"
 ```
 
 ## Monitoring & Observability
