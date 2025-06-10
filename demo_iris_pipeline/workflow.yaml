@@ -209,17 +209,21 @@ spec:
           - name: default
             componentSpecs:
             - spec:
-                imagePullSecrets:          # Add this section
-                - name: ghcr-secret        # Reference your registry secret
+                imagePullSecrets:
+                - name: ghcr-secret
                 containers:
                 - name: classifier
                   image: ghcr.io/jtayl222/iris:{{inputs.parameters.image-tag}}
                   imagePullPolicy: Always
+                  ports:                    # ADD THIS SECTION
+                  - containerPort: 8080     # Match your FastAPI port
+                    protocol: TCP
             graph:
-              name: classifier  # Add this required field
+              name: classifier
               type: MODEL
               endpoint:
                 type: REST
+                service_port: 8080          # ADD THIS LINE
               parameters:
               - name: model_uri
                 type: STRING

@@ -285,6 +285,103 @@ kubectl get configmap iris-src -n argowf -o yaml
 
 ## GitOps and ArgoCD Issues
 
+### Local Changes Being Overwritten by ArgoCD
+
+**Problem:**
+You update your workflow.yaml locally and apply it, but changes don't persist or get reverted:
+
+```bash
+# You make changes locally
+vim demo_iris_pipeline/workflow.yaml
+# Remove --no-push flag, add registry credentials, etc.
+
+# Apply them locally  
+kubectl apply -f demo_iris_pipeline/workflow.yaml
+
+# But workflow still shows old behavior
+argo logs iris-demo -n argowf --container main | grep "no-push"
+# Still shows: INFO[0077] Skipping push to container registry due to --no-push flag
+```
+
+**Root Cause:**
+ArgoCD manages your workflow from Git and continuously syncs from the repository. Local `kubectl apply` changes are **temporary** and get overwritten by ArgoCD's sync cycle (every ~3 minutes).
+
+**Solution - Proper GitOps Workflow:**
+```bash
+# 1. Make changes locally
+vim demo_iris_pipeline/workflow.yaml
+
+# 2. Commit and push to Git (this is the key step!)
+git add demo_iris_pipeline/workflow.yaml
+git commit -m "Remove --no-push flag to enable GHCR push"
+git push origin main
+
+# 3. Wait for or force ArgoCD sync
+argocd app sync homelab-mlops-demo
+
+# 4. Verify changes took effect
+kubectl get workflow iris-demo -n argowf -o yaml | grep -A 10 kaniko
+```
+
+**Quick Diagnostic:**
+```bash
+# Check what Git commit ArgoCD is synced to
+argocd app get homelab-mlops-demo | grep "Sync Revision"
+
+# Compare with your latest local commit
+git log --oneline -1
+
+# If they don't match, ArgoCD hasn't synced your latest changes
+```
+
+### Local Changes Being Overwritten by ArgoCD
+
+**Problem:**
+You update your workflow.yaml locally and apply it, but changes don't persist or get reverted:
+
+```bash
+# You make changes locally
+vim demo_iris_pipeline/workflow.yaml
+# Remove --no-push flag, add registry credentials, etc.
+
+# Apply them locally  
+kubectl apply -f demo_iris_pipeline/workflow.yaml
+
+# But workflow still shows old behavior
+argo logs iris-demo -n argowf --container main | grep "no-push"
+# Still shows: INFO[0077] Skipping push to container registry due to --no-push flag
+```
+
+**Root Cause:**
+ArgoCD manages your workflow from Git and continuously syncs from the repository. Local `kubectl apply` changes are **temporary** and get overwritten by ArgoCD's sync cycle (every ~3 minutes).
+
+**Solution - Proper GitOps Workflow:**
+```bash
+# 1. Make changes locally
+vim demo_iris_pipeline/workflow.yaml
+
+# 2. Commit and push to Git (this is the key step!)
+git add demo_iris_pipeline/workflow.yaml
+git commit -m "Remove --no-push flag to enable GHCR push"
+git push origin main
+
+# 3. Wait for or force ArgoCD sync
+argocd app sync homelab-mlops-demo
+
+# 4. Verify changes took effect
+kubectl get workflow iris-demo -n argowf -o yaml | grep -A 10 kaniko
+```
+
+**Quick Diagnostic:**
+```bash
+# Check what Git commit ArgoCD is synced to
+argocd app get homelab-mlops-demo | grep "Sync Revision"
+
+# Compare with your latest local commit
+git log --oneline -1
+
+# If they don't match, ArgoCD hasn't synced your latest changes
+
 ### ArgoCD Application Out of Sync
 
 **Problem:**
