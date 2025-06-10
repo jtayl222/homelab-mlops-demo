@@ -207,6 +207,12 @@ spec:
         spec:
           predictors:
           - name: default
+            graph:
+              name: classifier
+              endpoint:
+                service_port: 8080
+              type: MODEL
+              children: []
             componentSpecs:
             - spec:
                 imagePullSecrets:
@@ -217,7 +223,6 @@ spec:
                   imagePullPolicy: Always
                   ports:
                   - containerPort: 8080
-                    protocol: TCP
                   readinessProbe:
                     httpGet:
                       path: /health
@@ -230,16 +235,6 @@ spec:
                       port: 8080
                     initialDelaySeconds: 30
                     periodSeconds: 10
-            graph:
-              name: classifier
-              type: MODEL
-              endpoint:
-                type: REST
-                service_port: 8080
-              parameters:
-              - name: model_uri
-                type: STRING
-                value: /model/model.pkl
         EOF
         kubectl apply -f /tmp/seldon.yaml
 
