@@ -218,8 +218,24 @@ The ML pipeline consists of three main steps:
   - Copies trained model and application files to workspace
   - Builds Docker image using Kaniko (in-cluster builds)
   - Tags image as `ghcr.io/jtayl222/iris:latest`
-  - Saves image tar for deployment step
+  - **Note**: Uses `--no-push` flag to build locally without pushing to registry
+  - Saves image tar for deployment step (alternative to registry push/pull)
 - **Init Container**: Prepares workspace with model, Dockerfile, and serve.py
+- **Registry Options**: 
+  - GitHub Container Registry (GHCR): Requires authentication for private repos
+  - Docker Hub: Alternative public registry option
+  - Local registry: MinIO or in-cluster registry for air-gapped environments
+
+**Registry Authentication (if needed)**:
+```bash
+# For GHCR private repositories
+kubectl create secret docker-registry ghcr-secret \
+  --docker-server=ghcr.io \
+  --docker-username=<github-username> \
+  --docker-password=<github-token> \
+  --docker-email=<email> \
+  -n argowf
+```
 
 ### 3. Deploy Step
 - **Container**: `bitnami/kubectl:1.30`
@@ -721,4 +737,258 @@ spec:
     
 # workflow.yaml should NOT contain an ArgoCD Application
 # It should only contain the Workflow resource
+```
+
+# Emergency Cleanup and Restart Procedures
+
+## Scenario 1: Complete Reset (Nuclear Option)
+When everything is broken and you want to start fresh:
+
+```bash
+# 1. Delete ArgoCD application (if it exists)
+argocd app delete homelab-mlops-demo --cascade 2>/dev/null || echo "No ArgoCD app found"
+
+# 2. Clean up all workflows
+argo delete -n argowf --all
+
+# 3. Clean up Seldon deployments and services
+kubectl delete seldondeployment --all -n argowf
+kubectl delete svc -n argowf -l app.kubernetes.io/name=seldon
+
+# 4. Clean up any remaining Iris resources
+kubectl delete all -n argowf -l seldon-deployment-id=iris
+kubectl delete all -n argowf -l seldon-app=iris-default
+
+# 5. Remove ConfigMaps
+kubectl delete configmap iris-src -n argowf 2>/dev/null || echo "ConfigMap not found"
+
+# 6. Clean up persistent volumes (optional - removes training data)
+kubectl get pv | grep "Released.*iris-demo" | awk '{print $1}' | xargs -r kubectl delete pv
+
+# 7. Remove any stuck secrets (if needed)
+kubectl delete secret ghcr-secret -n argowf 2>/dev/null || echo "Secret not found"
+```
+
+## Scenario 2: Partial Cleanup (Keep Working Components)
+When you want to restart just the ML pipeline:
+
+```bash
+# 1. Stop current workflows
+argo delete -n argowf iris-demo 2>/dev/null || echo "No workflow found"
+
+# 2. Clean up model serving components
+kubectl delete seldondeployment iris -n argowf 2>/dev/null || echo "No Seldon deployment found"
+kubectl delete pods -n argowf -l seldon-deployment-id=iris --force --grace-period=0
+
+# 3. Clean up services (they'll be recreated)
+kubectl delete svc iris-default iris-default-classifier -n argowf 2>/dev/null || echo "Services not found"
+
+# 4. Keep ConfigMaps and PVs (preserve source code and training data)
+echo "Keeping ConfigMaps and persistent volumes..."
+```
+
+## Scenario 3: Registry Authentication Fix
+When you have ImagePullBackOff errors:
+
+```bash
+# 1. Create registry secret (run the command you just used)
+kubectl create secret docker-registry ghcr-secret \
+  --docker-server=ghcr.io \
+  --docker-username=<your-github-username> \
+  --docker-password=<your-github-token> \
+  --docker-email=<your-email> \
+  -n argowf
+
+# 2. Clean up failed pods
+kubectl delete pods -n argowf -l seldon-deployment-id=iris --force --grace-period=0
+
+# 3. Restart Seldon deployment to use new secret
+kubectl delete seldondeployment iris -n argowf
+# The deployment will be recreated by the next workflow run
+```
+
+## Complete Restart Procedure
+
+After cleanup, restart everything:
+
+```bash
+# 1. Verify namespace is clean
+kubectl get all -n argowf
+echo "Should only see Argo Workflows components"
+
+# 2. Recreate registry secret (if using private registry)
+kubectl create secret docker-registry ghcr-secret \
+  --docker-server=ghcr.io \
+  --docker-username=<github-username> \
+  --docker-password=<github-token> \
+  --docker-email=<email> \
+  -n argowf
+
+# 3. Regenerate ConfigMap with latest source
+./update-configmap.sh
+kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
+
+# 4. Recreate ArgoCD application
+kubectl apply -f applications/demo-iris-pipeline-app.yaml
+
+# 5. Sync ArgoCD (this deploys the workflow definition)
+argocd app sync homelab-mlops-demo
+
+# 6. Submit workflow manually (or let ArgoCD manage it)
+argo submit demo_iris_pipeline/workflow.yaml -n argowf --watch
+
+# 7. Monitor progress
+argocd app get homelab-mlops-demo
+argo get iris-demo -n argowf
+```
+
+### Verification Commands
+
+After restart, verify everything is working:
+
+```bash
+# Check ArgoCD application
+argocd app list
+argocd app get homelab-mlops-demo
+
+# Check workflow status
+argo list -n argowf
+argo get iris-demo -n argowf
+
+# Check model deployment (after workflow completes)
+kubectl get seldondeployments -n argowf
+kubectl get pods -n argowf -l seldon-deployment-id=iris
+
+# Test model endpoint (if deployment succeeded)
+kubectl port-forward -n argowf svc/iris-default 8080:8000 &
+curl -X POST http://localhost:8080/api/v1.0/predictions \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"ndarray": [[5.1, 3.5, 1.4, 0.2]]}}'
+```
+
+### Troubleshooting Common Restart Issues
+
+**ArgoCD Application Won't Sync:**
+```bash
+# Force refresh from Git
+argocd app get homelab-mlops-demo --hard-refresh
+
+# Force sync with prune
+argocd app sync homelab-mlops-demo --force --prune
+
+# Check for conflicts
+argocd app manifests homelab-mlops-demo | kubectl apply --dry-run=client -f -
+```
+
+**Workflow Stuck in Pending:**
+```bash
+# Check for resource constraints
+kubectl describe pod -n argowf <pending-pod-name>
+
+# Check if ConfigMap exists
+kubectl get configmap iris-src -n argowf
+
+# Check if secrets exist (for private registries)
+kubectl get secrets -n argowf | grep ghcr
+```
+
+**Seldon Deployment Issues:**
+```bash
+# Check Seldon operator is running
+kubectl get pods -n seldon-system
+
+# Check for RBAC issues
+kubectl auth can-i create seldondeployments --as=system:serviceaccount:argowf:default -n argowf
+
+# Manually create Seldon deployment for testing
+kubectl apply -f - <<EOF
+apiVersion: machinelearning.seldon.io/v1
+kind: SeldonDeployment
+metadata:
+  name: iris-test
+  namespace: argowf
+spec:
+  predictors:
+  - name: default
+    graph:
+      name: classifier
+      implementation: SKLEARN_SERVER
+      modelUri: "gs://seldon-models/sklearn/iris"
+EOF
+```
+
+### Emergency Recovery Script
+
+Create a `restart-demo.sh` script for quick recovery:
+
+```bash
+#!/bin/bash
+# restart-demo.sh
+
+set -e
+
+echo "🔄 Starting MLOps demo restart procedure..."
+
+# Cleanup
+echo "1. Cleaning up existing resources..."
+argocd app delete homelab-mlops-demo --cascade 2>/dev/null || echo "No ArgoCD app found"
+argo delete -n argowf --all 2>/dev/null || echo "No workflows found"
+kubectl delete seldondeployment --all -n argowf 2>/dev/null || echo "No Seldon deployments found"
+kubectl delete all -n argowf -l seldon-deployment-id=iris 2>/dev/null || echo "No Iris resources found"
+
+# Wait for cleanup
+echo "2. Waiting for cleanup to complete..."
+sleep 10
+
+# Recreate
+echo "3. Recreating registry secret..."
+kubectl create secret docker-registry ghcr-secret \
+  --docker-server=ghcr.io \
+  --docker-username=${GITHUB_USERNAME:-"your-username"} \
+  --docker-password=${GITHUB_TOKEN:-"your-token"} \
+  --docker-email=${GITHUB_EMAIL:-"your-email"} \
+  -n argowf --dry-run=client -o yaml | kubectl apply -f -
+
+echo "4. Regenerating ConfigMap..."
+./update-configmap.sh
+kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
+
+echo "5. Recreating ArgoCD application..."
+kubectl apply -f applications/demo-iris-pipeline-app.yaml
+
+echo "6. Syncing ArgoCD..."
+sleep 5  # Give ArgoCD time to detect the app
+argocd app sync homelab-mlops-demo
+
+echo "7. Submitting workflow..."
+argo submit demo_iris_pipeline/workflow.yaml -n argowf
+
+echo "✅ Restart complete! Monitor with:"
+echo "   argocd app get homelab-mlops-demo"
+echo "   argo get iris-demo -n argowf --watch"
+```
+
+Make it executable and use:
+```bash
+chmod +x restart-demo.sh
+
+# Set environment variables (optional)
+export GITHUB_USERNAME=your-username
+export GITHUB_TOKEN=your-token  
+export GITHUB_EMAIL=your-email
+
+# Run the restart
+./restart-demo.sh
+```
+
+### Current State Recovery
+
+Based on your current state (orphaned Iris resources, no ArgoCD app), run:
+
+```bash
+# Quick fix for your current situation
+kubectl delete all -n argowf -l seldon-deployment-id=iris
+kubectl apply -f applications/demo-iris-pipeline-app.yaml
+argocd app sync homelab-mlops-demo
+argo submit demo_iris_pipeline/workflow.yaml -n argowf --watch
 ```

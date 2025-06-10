@@ -104,26 +104,29 @@ spec:
       args:
       - --context=/workspace
       - --dockerfile=/workspace/Dockerfile
-      # Use a hardcoded tag that matches what we'll set in the init container
       - --destination=ghcr.io/jtayl222/iris:latest
-      - --tarPath=/tmp/image.tar
       - --push-retry=5
       - --verbosity=debug
-      - --no-push
       volumeMounts:
       - name: workdir
         mountPath: /workspace
-      - name: src  # Mount configmap that contains Dockerfile
+      - name: src
         mountPath: /src
-      - name: workdir  # Mount the same volume from train step to access the model
+      - name: workdir
         mountPath: /output
+      - name: docker-config
+        mountPath: /kaniko/.docker
+        readOnly: true
       env:
-      - name: GITHUB_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: github-credentials
-            key: token
-            optional: true
+      - name: DOCKER_CONFIG
+        value: /kaniko/.docker
+    volumes:
+    - name: docker-config
+      secret:
+        secretName: ghcr-secret
+        items:
+        - key: .dockerconfigjson
+          path: config.json
     initContainers:
     - name: prepare-workspace
       image: busybox
@@ -206,6 +209,8 @@ spec:
           - name: default
             componentSpecs:
             - spec:
+                imagePullSecrets:          # Add this section
+                - name: ghcr-secret        # Reference your registry secret
                 containers:
                 - name: classifier
                   image: ghcr.io/jtayl222/iris:{{inputs.parameters.image-tag}}
