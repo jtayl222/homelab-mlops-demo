@@ -15,5 +15,11 @@ def predict(payload: dict):
     preds = model.predict(data).tolist()
     return {"predictions": preds}
 
+# Add this health endpoint to your FastAPI app
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)

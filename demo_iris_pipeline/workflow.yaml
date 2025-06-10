@@ -215,15 +215,27 @@ spec:
                 - name: classifier
                   image: ghcr.io/jtayl222/iris:{{inputs.parameters.image-tag}}
                   imagePullPolicy: Always
-                  ports:                    # ADD THIS SECTION
-                  - containerPort: 8080     # Match your FastAPI port
+                  ports:
+                  - containerPort: 8080
                     protocol: TCP
+                  readinessProbe:
+                    httpGet:
+                      path: /health
+                      port: 8080
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+                  livenessProbe:
+                    httpGet:
+                      path: /health
+                      port: 8080
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
             graph:
               name: classifier
               type: MODEL
               endpoint:
                 type: REST
-                service_port: 8080          # ADD THIS LINE
+                service_port: 8080
               parameters:
               - name: model_uri
                 type: STRING
