@@ -90,12 +90,26 @@ def validate_model_api_format(model, sample_input):
     print("✅ Model API format validation passed")
     return True
 
-def save_validation_results(results, output_path="/output/validation_results.json"):
+def save_validation_results(results, output_path_arg=None): # Use a different name for the argument
     """Save validation results for downstream use"""
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w") as f:
+    # Prioritize environment variable, then argument, then a sensible default
+    # (though the default shouldn't be hit if the env var is always set in the workflow)
+    actual_output_path = os.getenv("OUTPUT_PATH")
+    if actual_output_path is None:
+        if output_path_arg is not None:
+            actual_output_path = output_path_arg
+        else:
+            # Fallback default, should match where Argo expects it if env var isn't set
+            actual_output_path = "/workspace/validation_results.json" 
+
+    print(f"Debug: Determined output path: {actual_output_path}") # Add for debugging
+
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(actual_output_path), exist_ok=True)
+    
+    with open(actual_output_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"✅ Validation results saved to {output_path}")
+    print(f"✅ Validation results saved to {actual_output_path}")
 
 def main():
     """Main validation pipeline"""

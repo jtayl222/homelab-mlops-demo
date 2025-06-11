@@ -69,6 +69,7 @@ spec:
           pip install setuptools==78.1.0 boto3==1.37.34
           cp /src/requirements.txt /tmp/requirements.txt
           pip install -r /tmp/requirements.txt
+          pip install scikit-learn==1.5.1 numpy pandas
           python /src/train.py
           "
       volumeMounts:

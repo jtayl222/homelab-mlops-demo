@@ -173,4 +173,13 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# VS Code settings
 .vscode/
+
+# Local test files
+test_model.py
+test_validation_local.py
+create_test_model.py
+output/
+model/
+*.pkl
