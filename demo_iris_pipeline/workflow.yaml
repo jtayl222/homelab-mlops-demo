@@ -27,9 +27,16 @@ spec:
       - name: validate
         template: model-validation
         dependencies: [train]
+      - name: version-model
+        template: semantic-versioning
+        dependencies: [validate]
       - name: kaniko
         template: kaniko
-        dependencies: [validate] 
+        dependencies: [version-model]  # Changed from validate
+        arguments:
+          parameters:
+          - name: version-tag
+            value: "{{tasks.version-model.outputs.parameters.version-tag}}"
       - name: deploy
         template: deploy
         dependencies: [kaniko]
@@ -37,6 +44,8 @@ spec:
           parameters:
           - name: image-tag
             value: "{{tasks.kaniko.outputs.parameters.image-tag}}"
+          - name: model-version
+            value: "{{tasks.version-model.outputs.parameters.model-version}}"
 
   - name: train
     container:
@@ -91,6 +100,9 @@ spec:
         name: iris-src
 
   - name: kaniko
+    inputs:
+      parameters:
+      - name: version-tag
     outputs:
       parameters:
       - name: image-tag
@@ -108,7 +120,8 @@ spec:
       args:
       - --context=/workspace
       - --dockerfile=/workspace/Dockerfile
-      - --destination=ghcr.io/jtayl222/iris:latest
+      - --destination=ghcr.io/jtayl222/iris:{{inputs.parameters.version-tag}}
+      - --destination=ghcr.io/jtayl222/iris:latest  # Always tag latest too
       - --push-retry=5
       - --verbosity=debug
       volumeMounts:
@@ -168,9 +181,9 @@ spec:
         
         cp /src/serve.py /workspace/
         
-        # Generate a fixed tag for now (we'll use "latest")
-        TAG="latest"
-        echo "Generated tag: $TAG"
+        # Use version tag from versioning step
+        TAG="{{inputs.parameters.version-tag}}"
+        echo "Using version tag: $TAG"
         
         # Save tag for output parameter
         echo "$TAG" > /workspace/image_tag.txt
@@ -242,6 +255,54 @@ spec:
         
         echo "Model validation completed"
 
+  - name: semantic-versioning
+    outputs:
+      parameters:
+      - name: model-version
+        valueFrom:
+          path: /workspace/model_version.txt
+      - name: version-tag
+        valueFrom:
+          path: /workspace/version_tag.txt
+    container:
+      image: python:3.12-slim
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "200m"
+        limits:
+          memory: "1Gi"
+          cpu: "500m"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
+      command: [sh, -c]
+      args:
+      - |
+        cd /workspace
+        
+        # Install dependencies
+        pip install requests semver
+        
+        # Copy versioning script
+        cp /src/version_model.py .
+        
+        # Set environment variables
+        export VALIDATION_RESULTS_PATH=/workspace/validation_results.json
+        export OUTPUT_PATH=/workspace/model_version.txt
+        export VERSION_TAG_PATH=/workspace/version_tag.txt
+        
+        # Run versioning logic
+        python version_model.py
+        
+        echo "Model versioning completed"
+        
+        # Show results
+        echo "Model Version: $(cat /workspace/model_version.txt)"
+        echo "Version Tag: $(cat /workspace/version_tag.txt)"
+
   - name: deploy
     inputs:
       parameters:
@@ -294,6 +355,9 @@ spec:
                     protocol: TCP
                   - name: metrics
                     containerPort: 6000 # Assuming your app serves metrics here
+                    protocol: TCP
+                  - name: prometheus-metrics
+                    containerPort: 9500
                     protocol: TCP
                   readinessProbe:
                     httpGet:
