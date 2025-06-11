@@ -24,16 +24,19 @@ spec:
       tasks:
       - name: train
         template: train
-      - name: build-image
+      - name: validate
+        template: model-validation
         dependencies: [train]
+      - name: kaniko
         template: kaniko
+        dependencies: [validate] 
       - name: deploy
-        dependencies: [build-image]
         template: deploy
+        dependencies: [kaniko]
         arguments:
           parameters:
           - name: image-tag
-            value: '{{tasks.build-image.outputs.parameters.image-tag}}'
+            value: "{{tasks.kaniko.outputs.parameters.image-tag}}"
 
   - name: train
     container:
@@ -181,6 +184,46 @@ spec:
         mountPath: /src
       - name: workdir
         mountPath: /output
+
+  - name: model-validation
+    outputs:
+      parameters:
+      - name: validation-status
+        valueFrom:
+          path: /workspace/validation_results.json  # Changed from /output
+    container:
+      image: python:3.12-slim
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "500m"
+        limits:
+          memory: "2Gi"
+          cpu: "1000m"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace  # Only mount workdir once
+      - name: src
+        mountPath: /src
+      command: [sh, -c]
+      args:
+      - |
+        cd /workspace
+        
+        # Install dependencies
+        pip install scikit-learn==1.5.1 numpy pandas
+        
+        # Model is already in /workspace/model.pkl from training step
+        # Copy and run validation script
+        cp /src/test_model.py .
+        
+        # Set environment variables for validation script
+        export MODEL_PATH=/workspace/model.pkl
+        export OUTPUT_PATH=/workspace/validation_results.json
+        
+        python test_model.py
+        
+        echo "Model validation completed"
 
   - name: deploy
     inputs:

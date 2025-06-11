@@ -53,6 +53,67 @@ data:
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8080)
+  test_model.py: "import pickle\nimport numpy as np\nimport json\nimport os\nfrom
+    sklearn.datasets import load_iris\nfrom sklearn.metrics import accuracy_score,
+    classification_report, confusion_matrix\nfrom sklearn.model_selection import train_test_split\n\ndef
+    load_model(model_path=\"/model/model.pkl\"):\n    \"\"\"Load the trained model\"\"\"\n
+    \   with open(model_path, \"rb\") as f:\n        return pickle.load(f)\n\ndef
+    load_test_data():\n    \"\"\"Load and split iris dataset for testing\"\"\"\n    X,
+    y = load_iris(return_X_y=True)\n    X_train, X_test, y_train, y_test = train_test_split(\n
+    \       X, y, test_size=0.3, random_state=42, stratify=y\n    )\n    return X_test,
+    y_test\n\ndef validate_model_accuracy(model, X_test, y_test, min_accuracy=0.85):\n
+    \   \"\"\"Test model accuracy meets minimum threshold\"\"\"\n    predictions =
+    model.predict(X_test)\n    accuracy = accuracy_score(y_test, predictions)\n    \n
+    \   print(f\"Model Accuracy: {accuracy:.4f}\")\n    print(f\"Required Minimum:
+    {min_accuracy}\")\n    \n    if accuracy < min_accuracy:\n        raise ValueError(f\"Model
+    accuracy {accuracy:.4f} below threshold {min_accuracy}\")\n    \n    return accuracy,
+    predictions\n\ndef validate_model_predictions(model, X_test):\n    \"\"\"Test
+    model prediction format and types\"\"\"\n    predictions = model.predict(X_test)\n
+    \   \n    # Check prediction shape\n    assert len(predictions) == len(X_test),
+    \"Prediction count mismatch\"\n    \n    # Check prediction values are valid class
+    labels (0, 1, 2 for iris)\n    unique_preds = np.unique(predictions)\n    assert
+    all(pred in [0, 1, 2] for pred in unique_preds), \"Invalid prediction classes\"\n
+    \   \n    # Check no NaN or infinite values\n    assert not np.any(np.isnan(predictions)),
+    \"NaN values in predictions\"\n    assert not np.any(np.isinf(predictions)), \"Infinite
+    values in predictions\"\n    \n    print(\"✅ Model prediction validation passed\")\n
+    \   return True\n\ndef validate_model_performance(model, X_test, y_test):\n    \"\"\"Comprehensive
+    model performance validation\"\"\"\n    predictions = model.predict(X_test)\n
+    \   \n    # Generate classification report\n    report = classification_report(y_test,
+    predictions, output_dict=True)\n    conf_matrix = confusion_matrix(y_test, predictions)\n
+    \   \n    # Check per-class performance\n    for class_id in [0, 1, 2]:\n        class_f1
+    = report[str(class_id)]['f1-score']\n        if class_f1 < 0.7:  # Minimum F1
+    score per class\n            raise ValueError(f\"Class {class_id} F1-score {class_f1:.4f}
+    below threshold 0.7\")\n    \n    print(\"✅ Model performance validation passed\")\n
+    \   print(\"\\nClassification Report:\")\n    print(classification_report(y_test,
+    predictions))\n    \n    return report, conf_matrix\n\ndef validate_model_api_format(model,
+    sample_input):\n    \"\"\"Test model works with API input format\"\"\"\n    #
+    Test single prediction\n    single_pred = model.predict([sample_input])\n    assert
+    len(single_pred) == 1, \"Single prediction failed\"\n    \n    # Test batch prediction\n
+    \   batch_input = np.array([sample_input, sample_input])\n    batch_pred = model.predict(batch_input)\n
+    \   assert len(batch_pred) == 2, \"Batch prediction failed\"\n    \n    print(\"✅
+    Model API format validation passed\")\n    return True\n\ndef save_validation_results(results,
+    output_path=\"/output/validation_results.json\"):\n    \"\"\"Save validation results
+    for downstream use\"\"\"\n    os.makedirs(os.path.dirname(output_path), exist_ok=True)\n
+    \   with open(output_path, \"w\") as f:\n        json.dump(results, f, indent=2,
+    default=str)\n    print(f\"✅ Validation results saved to {output_path}\")\n\ndef
+    main():\n    \"\"\"Main validation pipeline\"\"\"\n    print(\"\U0001F9EA Starting
+    Model Validation Tests...\")\n    \n    try:\n        # Load model and test data\n
+    \       model = load_model()\n        X_test, y_test = load_test_data()\n        \n
+    \       # Run validation tests\n        accuracy, predictions = validate_model_accuracy(model,
+    X_test, y_test)\n        validate_model_predictions(model, X_test)\n        report,
+    conf_matrix = validate_model_performance(model, X_test, y_test)\n        validate_model_api_format(model,
+    X_test[0])\n        \n        # Compile results\n        results = {\n            \"validation_status\":
+    \"PASSED\",\n            \"accuracy\": float(accuracy),\n            \"classification_report\":
+    report,\n            \"confusion_matrix\": conf_matrix.tolist(),\n            \"test_count\":
+    len(X_test),\n            \"timestamp\": str(np.datetime64('now'))\n        }\n
+    \       \n        # Save results\n        save_validation_results(results)\n        \n
+    \       print(f\"\\n\U0001F389 All validation tests PASSED!\")\n        print(f\"Model
+    accuracy: {accuracy:.4f}\")\n        \n    except Exception as e:\n        print(f\"\\n❌
+    Validation FAILED: {str(e)}\")\n        \n        # Save failure results\n        failure_results
+    = {\n            \"validation_status\": \"FAILED\",\n            \"error\": str(e),\n
+    \           \"timestamp\": str(np.datetime64('now'))\n        }\n        save_validation_results(failure_results)\n
+    \       \n        # Exit with error code\n        exit(1)\n\nif __name__ == \"__main__\":\n
+    \   main()"
   train.py: "import mlflow, os, pickle, json\nfrom sklearn.datasets import load_iris\nfrom
     sklearn.model_selection import train_test_split\nfrom sklearn.ensemble import
     RandomForestClassifier\nfrom sklearn.metrics import accuracy_score\n\nmlflow.set_tracking_uri(os.environ[\"MLFLOW_TRACKING_URI\"])\nmlflow.set_experiment(\"iris_demo\")\n\nwith
