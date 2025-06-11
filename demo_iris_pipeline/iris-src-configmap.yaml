@@ -19,6 +19,125 @@ data:
 
     # Run the server
     CMD ["python", "serve.py"]
+  deploy_model.py: "import os\nimport json\nimport yaml\nfrom datetime import datetime\n\ndef
+    load_model_metadata():\n    \"\"\"Load model metadata from versioning step\"\"\"\n
+    \   metadata_path = \"/workspace/model_metadata.json\"\n    \n    if os.path.exists(metadata_path):\n
+    \       with open(metadata_path, 'r') as f:\n            return json.load(f)\n
+    \   else:\n        # Fallback if metadata doesn't exist\n        return {\n            \"model_version\":
+    os.getenv(\"MODEL_VERSION\", \"0.1.0\"),\n            \"timestamp\": datetime.utcnow().isoformat()
+    + 'Z',\n            \"validation_results\": {\"validation_status\": \"UNKNOWN\"}\n
+    \       }\n\ndef generate_seldon_deployment(image_tag, model_version, metadata):\n
+    \   \"\"\"Generate SeldonDeployment manifest with versioning info\"\"\"\n    \n
+    \   # Get environment variables\n    namespace = os.getenv(\"NAMESPACE\", \"argowf\")\n
+    \   model_name = os.getenv(\"MODEL_NAME\", \"iris\")\n    \n    # Create deployment
+    name with version\n    deployment_name = f\"{model_name}-{model_version.replace('.',
+    '-')}\"\n    \n    seldon_deployment = {\n        \"apiVersion\": \"machinelearning.seldon.io/v1\",\n
+    \       \"kind\": \"SeldonDeployment\",\n        \"metadata\": {\n            \"name\":
+    deployment_name,\n            \"namespace\": namespace,\n            \"labels\":
+    {\n                \"app\": model_name,\n                \"version\": model_version,\n
+    \               \"managed-by\": \"argo-workflows\"\n            },\n            \"annotations\":
+    {\n                \"deployment.timestamp\": metadata.get(\"timestamp\", \"\"),\n
+    \               \"model.version\": model_version,\n                \"model.accuracy\":
+    str(metadata.get(\"performance_metrics\", {}).get(\"accuracy\", \"unknown\")),\n
+    \               \"validation.status\": metadata.get(\"validation_results\", {}).get(\"validation_status\",
+    \"unknown\")\n            }\n        },\n        \"spec\": {\n            \"name\":
+    deployment_name,\n            \"predictors\": [\n                {\n                    \"name\":
+    \"default\",\n                    \"replicas\": 1,\n                    \"graph\":
+    {\n                        \"name\": \"classifier\",\n                        \"implementation\":
+    \"SKLEARN_SERVER\",\n                        \"modelUri\": \"pvc://workdir/model\",\n
+    \                       \"endpoint\": {\n                            \"type\":
+    \"REST\",\n                            \"service_host\": \"localhost\",\n                            \"service_port\":
+    8080\n                        }\n                    },\n                    \"componentSpecs\":
+    [\n                        {\n                            \"spec\": {\n                                \"containers\":
+    [\n                                    {\n                                        \"name\":
+    \"classifier\",\n                                        \"image\": f\"ghcr.io/jtayl222/iris:{image_tag}\",\n
+    \                                       \"ports\": [\n                                            {\n
+    \                                               \"name\": \"http\",\n                                                \"containerPort\":
+    8080,\n                                                \"protocol\": \"TCP\"\n
+    \                                           },\n                                            {\n
+    \                                               \"name\": \"metrics\",\n                                                \"containerPort\":
+    6000,\n                                                \"protocol\": \"TCP\"\n
+    \                                           }\n                                        ],\n
+    \                                       \"env\": [\n                                            {\n
+    \                                               \"name\": \"PREDICTIVE_UNIT_HTTP_SERVICE_PORT\",\n
+    \                                               \"value\": \"8080\"\n                                            },\n
+    \                                           {\n                                                \"name\":
+    \"MODEL_VERSION\",\n                                                \"value\":
+    model_version\n                                            }\n                                        ],\n
+    \                                       \"readinessProbe\": {\n                                            \"httpGet\":
+    {\n                                                \"path\": \"/health\",\n                                                \"port\":
+    8080,\n                                                \"scheme\": \"HTTP\"\n
+    \                                           },\n                                            \"initialDelaySeconds\":
+    10,\n                                            \"periodSeconds\": 5,\n                                            \"timeoutSeconds\":
+    1,\n                                            \"successThreshold\": 1,\n                                            \"failureThreshold\":
+    3\n                                        },\n                                        \"livenessProbe\":
+    {\n                                            \"httpGet\": {\n                                                \"path\":
+    \"/health\",\n                                                \"port\": 8080,\n
+    \                                               \"scheme\": \"HTTP\"\n                                            },\n
+    \                                           \"initialDelaySeconds\": 30,\n                                            \"periodSeconds\":
+    10,\n                                            \"timeoutSeconds\": 1,\n                                            \"successThreshold\":
+    1,\n                                            \"failureThreshold\": 3\n                                        },\n
+    \                                       \"resources\": {\n                                            \"requests\":
+    {\n                                                \"memory\": \"1Gi\",\n                                                \"cpu\":
+    \"500m\"\n                                            },\n                                            \"limits\":
+    {\n                                                \"memory\": \"2Gi\",\n                                                \"cpu\":
+    \"1\"\n                                            }\n                                        },\n
+    \                                       \"volumeMounts\": [\n                                            {\n
+    \                                               \"name\": \"model-storage\",\n
+    \                                               \"mountPath\": \"/mnt/models\"\n
+    \                                           }\n                                        ]\n
+    \                                   }\n                                ],\n                                \"volumes\":
+    [\n                                    {\n                                        \"name\":
+    \"model-storage\",\n                                        \"persistentVolumeClaim\":
+    {\n                                            \"claimName\": \"workdir\"\n                                        }\n
+    \                                   }\n                                ]\n                            }\n
+    \                       }\n                    ]\n                }\n            ]\n
+    \       }\n    }\n    \n    return seldon_deployment\n\ndef cleanup_old_deployments(current_version,
+    namespace=\"argowf\"):\n    \"\"\"Clean up old deployment versions (keep last
+    3)\"\"\"\n    try:\n        import subprocess\n        \n        # Get all SeldonDeployments
+    for this model\n        result = subprocess.run([\n            \"kubectl\", \"get\",
+    \"seldondeployments\", \"-n\", namespace,\n            \"-l\", \"app=iris\", \"-o\",
+    \"jsonpath={.items[*].metadata.name}\"\n        ], capture_output=True, text=True)\n
+    \       \n        if result.returncode == 0:\n            deployments = result.stdout.strip().split()\n
+    \           \n            # Sort deployments (assuming version-based naming)\n
+    \           deployments.sort()\n            \n            # Keep only the last
+    3 versions, delete older ones\n            if len(deployments) > 3:\n                old_deployments
+    = deployments[:-3]\n                for old_deployment in old_deployments:\n                    print(f\"\U0001F5D1️
+    Cleaning up old deployment: {old_deployment}\")\n                    subprocess.run([\n
+    \                       \"kubectl\", \"delete\", \"seldondeployment\", old_deployment,
+    \"-n\", namespace\n                    ])\n                    \n    except Exception
+    as e:\n        print(f\"⚠️ Warning: Could not clean up old deployments: {e}\")\n\ndef
+    save_deployment_manifest(seldon_deployment):\n    \"\"\"Save the deployment manifest
+    for kubectl apply\"\"\"\n    output_path = \"/workspace/seldon.yaml\"\n    \n
+    \   with open(output_path, 'w') as f:\n        yaml.dump(seldon_deployment, f,
+    default_flow_style=False)\n    \n    print(f\"✅ Seldon deployment manifest saved
+    to {output_path}\")\n    return output_path\n\ndef main():\n    \"\"\"Main deployment
+    logic\"\"\"\n    print(\"\U0001F680 Starting Model Deployment...\")\n    \n    try:\n
+    \       # Get inputs from environment or workflow parameters\n        image_tag
+    = os.getenv(\"IMAGE_TAG\", \"latest\")\n        model_version = os.getenv(\"MODEL_VERSION\",
+    \"0.1.0\")\n        \n        print(f\"\U0001F4E6 Image Tag: {image_tag}\")\n
+    \       print(f\"\U0001F3F7️ Model Version: {model_version}\")\n        \n        #
+    Load model metadata\n        metadata = load_model_metadata()\n        print(f\"\U0001F4CA
+    Model Accuracy: {metadata.get('performance_metrics', {}).get('accuracy', 'unknown')}\")\n
+    \       \n        # Generate deployment manifest\n        seldon_deployment =
+    generate_seldon_deployment(image_tag, model_version, metadata)\n        \n        #
+    Save manifest\n        manifest_path = save_deployment_manifest(seldon_deployment)\n
+    \       \n        # Apply deployment\n        import subprocess\n        print(\"\U0001F3AF
+    Applying SeldonDeployment...\")\n        \n        result = subprocess.run([\n
+    \           \"kubectl\", \"apply\", \"-f\", manifest_path\n        ], capture_output=True,
+    text=True)\n        \n        if result.returncode == 0:\n            print(\"✅
+    SeldonDeployment applied successfully!\")\n            print(result.stdout)\n
+    \           \n            # Clean up old deployments\n            cleanup_old_deployments(model_version)\n
+    \           \n            # Wait for deployment to be ready\n            deployment_name
+    = f\"iris-{model_version.replace('.', '-')}\"\n            print(f\"⏳ Waiting
+    for deployment {deployment_name} to be ready...\")\n            \n            subprocess.run([\n
+    \               \"kubectl\", \"wait\", \"--for=condition=Ready\", \n                f\"seldondeployment/{deployment_name}\",\n
+    \               \"-n\", os.getenv(\"NAMESPACE\", \"argowf\"),\n                \"--timeout=300s\"\n
+    \           ])\n            \n            print(f\"\U0001F389 Model v{model_version}
+    deployed successfully!\")\n            \n        else:\n            print(f\"❌
+    Deployment failed: {result.stderr}\")\n            exit(1)\n            \n    except
+    Exception as e:\n        print(f\"❌ Deployment failed: {str(e)}\")\n        exit(1)\n\nif
+    __name__ == \"__main__\":\n    main()"
   requirements.txt: |
     scikit-learn==1.4.2
     mlflow==2.12.1
@@ -139,6 +258,83 @@ data:
     = mlflow.active_run().info.run_id\n    with open(\"/output/run_info.json\", \"w\")
     as f:\n        json.dump({\"run_id\": run_id}, f)\n    \n    print(\"Training
     complete with accuracy:\", acc)\n"
+  version_model.py: "import json\nimport os\nimport requests\nimport semver\nfrom
+    datetime import datetime\n\ndef get_current_version():\n    \"\"\"Get the current
+    version from Git tags or start with v0.1.0\"\"\"\n    try:\n        # In a real
+    scenario, you'd query Git tags or a version registry\n        # For demo, we'll
+    simulate with a simple logic\n        \n        # Try to get last version from
+    a hypothetical registry/git\n        # For now, we'll use a simple file-based
+    approach\n        version_file = \"/workspace/last_version.txt\"\n        \n        if
+    os.path.exists(version_file):\n            with open(version_file, 'r') as f:\n
+    \               last_version = f.read().strip()\n            return last_version\n
+    \       else:\n            # Start with initial version\n            return \"0.1.0\"\n
+    \           \n    except Exception as e:\n        print(f\"Warning: Could not
+    determine current version: {e}\")\n        return \"0.1.0\"\n\ndef load_validation_results():\n
+    \   \"\"\"Load validation results from the validation step\"\"\"\n    results_path
+    = os.getenv(\"VALIDATION_RESULTS_PATH\", \"/workspace/validation_results.json\")\n
+    \   \n    with open(results_path, 'r') as f:\n        return json.load(f)\n\ndef
+    determine_version_bump(validation_results, current_version):\n    \"\"\"Determine
+    what type of version bump is needed\"\"\"\n    \n    accuracy = validation_results.get('accuracy',
+    0.0)\n    validation_status = validation_results.get('validation_status', 'FAILED')\n
+    \   \n    # Parse current version\n    try:\n        version_info = semver.VersionInfo.parse(current_version)\n
+    \   except:\n        version_info = semver.VersionInfo.parse(\"0.1.0\")\n    \n
+    \   print(f\"Current version: {version_info}\")\n    print(f\"Validation status:
+    {validation_status}\")\n    print(f\"Model accuracy: {accuracy:.4f}\")\n    \n
+    \   # Version bump logic based on validation results\n    if validation_status
+    == \"FAILED\":\n        print(\"❌ Validation failed - no version bump\")\n        return
+    None\n    \n    # Determine bump type based on accuracy improvement\n    if accuracy
+    >= 0.99:\n        # Exceptional accuracy - minor bump\n        print(\"\U0001F680
+    Exceptional accuracy (≥99%) - MINOR version bump\")\n        new_version = version_info.bump_minor()\n
+    \   elif accuracy >= 0.95:\n        # Good accuracy - patch bump\n        print(\"✅
+    Good accuracy (≥95%) - PATCH version bump\")\n        new_version = version_info.bump_patch()\n
+    \   elif accuracy >= 0.85:\n        # Acceptable accuracy - patch bump\n        print(\"✅
+    Acceptable accuracy (≥85%) - PATCH version bump\")\n        new_version = version_info.bump_patch()\n
+    \   else:\n        # Low accuracy - no version bump\n        print(\"⚠️ Low accuracy
+    (<85%) - no version bump\")\n        return None\n    \n    return str(new_version)\n\ndef
+    create_model_metadata(validation_results, version):\n    \"\"\"Create comprehensive
+    model metadata\"\"\"\n    \n    timestamp = datetime.utcnow().isoformat() + 'Z'\n
+    \   \n    metadata = {\n        \"model_version\": version,\n        \"timestamp\":
+    timestamp,\n        \"validation_results\": validation_results,\n        \"performance_metrics\":
+    {\n            \"accuracy\": validation_results.get('accuracy', 0.0),\n            \"test_samples\":
+    validation_results.get('test_count', 0),\n            \"validation_status\": validation_results.get('validation_status',
+    'UNKNOWN')\n        },\n        \"model_info\": {\n            \"algorithm\":
+    \"RandomForestClassifier\",\n            \"dataset\": \"iris\",\n            \"target_classes\":
+    [\"setosa\", \"versicolor\", \"virginica\"],\n            \"features\": [\"sepal_length\",
+    \"sepal_width\", \"petal_length\", \"petal_width\"]\n        },\n        \"deployment_info\":
+    {\n            \"container_registry\": \"ghcr.io/jtayl222/iris\",\n            \"serving_framework\":
+    \"FastAPI + Seldon\",\n            \"kubernetes_ready\": True\n        }\n    }\n
+    \   \n    return metadata\n\ndef save_version_info(version, metadata):\n    \"\"\"Save
+    version information for downstream steps\"\"\"\n    \n    # Save version for workflow
+    output\n    version_path = os.getenv(\"OUTPUT_PATH\", \"/workspace/model_version.txt\")\n
+    \   with open(version_path, 'w') as f:\n        f.write(version)\n    \n    #
+    Save version tag for container tagging\n    version_tag_path = os.getenv(\"VERSION_TAG_PATH\",
+    \"/workspace/version_tag.txt\")\n    with open(version_tag_path, 'w') as f:\n
+    \       f.write(f\"v{version}\")  # Add 'v' prefix for container tags\n    \n
+    \   # Save complete metadata\n    metadata_path = \"/workspace/model_metadata.json\"\n
+    \   with open(metadata_path, 'w') as f:\n        json.dump(metadata, f, indent=2)\n
+    \   \n    # Save current version for next run\n    with open(\"/workspace/last_version.txt\",
+    'w') as f:\n        f.write(version)\n    \n    print(f\"✅ Version information
+    saved:\")\n    print(f\"   Version: {version}\")\n    print(f\"   Container Tag:
+    v{version}\")\n    print(f\"   Metadata: {metadata_path}\")\n\ndef main():\n    \"\"\"Main
+    versioning logic\"\"\"\n    print(\"\U0001F3F7️ Starting Model Versioning...\")\n
+    \   \n    try:\n        # Load validation results\n        validation_results
+    = load_validation_results()\n        print(f\"✅ Loaded validation results\")\n
+    \       \n        # Get current version\n        current_version = get_current_version()\n
+    \       print(f\"\U0001F4CB Current version: {current_version}\")\n        \n
+    \       # Determine version bump\n        new_version = determine_version_bump(validation_results,
+    current_version)\n        \n        if new_version is None:\n            print(\"❌
+    No version bump - using current version\")\n            new_version = current_version\n
+    \       else:\n            print(f\"\U0001F3AF New version: {new_version}\")\n
+    \       \n        # Create metadata\n        metadata = create_model_metadata(validation_results,
+    new_version)\n        \n        # Save version info\n        save_version_info(new_version,
+    metadata)\n        \n        print(f\"\\n\U0001F389 Model versioning completed!\")\n
+    \       print(f\"Version: {new_version}\")\n        print(f\"Container Tag: v{new_version}\")\n
+    \       \n    except Exception as e:\n        print(f\"❌ Versioning failed: {str(e)}\")\n
+    \       \n        # Save fallback version\n        fallback_version = \"0.1.0\"\n
+    \       with open(os.getenv(\"OUTPUT_PATH\", \"/workspace/model_version.txt\"),
+    'w') as f:\n            f.write(fallback_version)\n        with open(os.getenv(\"VERSION_TAG_PATH\",
+    \"/workspace/version_tag.txt\"), 'w') as f:\n            f.write(f\"v{fallback_version}\")\n
+    \       \n        exit(1)\n\nif __name__ == \"__main__\":\n    main()"
 kind: ConfigMap
 metadata:
   name: iris-src
