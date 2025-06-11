@@ -209,8 +209,6 @@ spec:
           - name: default
             graph:
               name: classifier
-              endpoint:
-                service_port: 8080
               type: MODEL
               children: []
             componentSpecs:
@@ -221,6 +219,11 @@ spec:
                 - name: classifier
                   image: ghcr.io/jtayl222/iris:{{inputs.parameters.image-tag}}
                   imagePullPolicy: Always
+                  env:                              # ADD THIS SECTION
+                  - name: PREDICTIVE_UNIT_SERVICE_PORT     # Tell Seldon what port to use
+                    value: "8080"
+                  - name: PREDICTIVE_UNIT_HTTP_SERVICE_PORT
+                    value: "8080"  
                   ports:
                   - containerPort: 8080
                   readinessProbe:
