@@ -94,10 +94,18 @@ data:
     \   batch_input = np.array([sample_input, sample_input])\n    batch_pred = model.predict(batch_input)\n
     \   assert len(batch_pred) == 2, \"Batch prediction failed\"\n    \n    print(\"✅
     Model API format validation passed\")\n    return True\n\ndef save_validation_results(results,
-    output_path=\"/output/validation_results.json\"):\n    \"\"\"Save validation results
-    for downstream use\"\"\"\n    os.makedirs(os.path.dirname(output_path), exist_ok=True)\n
-    \   with open(output_path, \"w\") as f:\n        json.dump(results, f, indent=2,
-    default=str)\n    print(f\"✅ Validation results saved to {output_path}\")\n\ndef
+    output_path_arg=None): # Use a different name for the argument\n    \"\"\"Save
+    validation results for downstream use\"\"\"\n    # Prioritize environment variable,
+    then argument, then a sensible default\n    # (though the default shouldn't be
+    hit if the env var is always set in the workflow)\n    actual_output_path = os.getenv(\"OUTPUT_PATH\")\n
+    \   if actual_output_path is None:\n        if output_path_arg is not None:\n
+    \           actual_output_path = output_path_arg\n        else:\n            #
+    Fallback default, should match where Argo expects it if env var isn't set\n            actual_output_path
+    = \"/workspace/validation_results.json\" \n\n    print(f\"Debug: Determined output
+    path: {actual_output_path}\") # Add for debugging\n\n    # Ensure the directory
+    exists\n    os.makedirs(os.path.dirname(actual_output_path), exist_ok=True)\n
+    \   \n    with open(actual_output_path, \"w\") as f:\n        json.dump(results,
+    f, indent=2, default=str)\n    print(f\"✅ Validation results saved to {actual_output_path}\")\n\ndef
     main():\n    \"\"\"Main validation pipeline\"\"\"\n    print(\"\U0001F9EA Starting
     Model Validation Tests...\")\n    \n    try:\n        # Load model and test data\n
     \       model = load_model()\n        X_test, y_test = load_test_data()\n        \n
