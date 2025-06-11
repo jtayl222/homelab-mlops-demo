@@ -213,12 +213,28 @@ spec:
         # Install dependencies
         pip install scikit-learn==1.5.1 numpy pandas
         
-        # Model is already in /workspace/model.pkl from training step
+        # Debug: Check what files exist
+        echo "Files in /workspace:"
+        ls -la /workspace/
+        
+        # Check if model exists in model subdirectory (from train step)
+        if [ -f "/workspace/model/model.pkl" ]; then
+          echo "✅ Model found at /workspace/model/model.pkl"
+          export MODEL_PATH=/workspace/model/model.pkl
+        elif [ -f "/workspace/model.pkl" ]; then
+          echo "✅ Model found at /workspace/model.pkl"
+          export MODEL_PATH=/workspace/model.pkl
+        else
+          echo "❌ Model not found"
+          echo "Available files:"
+          find /workspace -name "*.pkl" -type f
+          exit 1
+        fi
+        
         # Copy and run validation script
         cp /src/test_model.py .
         
         # Set environment variables for validation script
-        export MODEL_PATH=/workspace/model.pkl
         export OUTPUT_PATH=/workspace/validation_results.json
         
         python test_model.py

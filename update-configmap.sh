@@ -6,6 +6,7 @@ set -e
 kubectl create configmap iris-src \
   --from-file=serve.py=demo_iris_pipeline/serve.py \
   --from-file=train.py=demo_iris_pipeline/train.py \
+  --from-file=test_model.py=demo_iris_pipeline/test_model.py \
   --from-file=Dockerfile=demo_iris_pipeline/Dockerfile \
   --from-file=requirements.txt=demo_iris_pipeline/requirements.txt \
   --namespace=argowf \
