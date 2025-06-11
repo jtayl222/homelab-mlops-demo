@@ -917,61 +917,10 @@ spec:
 EOF
 ```
 
-### Emergency Recovery Script
-
-Create a `restart-demo.sh` script for quick recovery:
+## Restart Script
+Using the restart script simplifies the process of restarting the demo application after making changes or when troubleshooting issues.
 
 ```bash
-#!/bin/bash
-# restart-demo.sh
-
-set -e
-
-echo "🔄 Starting MLOps demo restart procedure..."
-
-# Cleanup
-echo "1. Cleaning up existing resources..."
-argocd app delete homelab-mlops-demo --cascade 2>/dev/null || echo "No ArgoCD app found"
-argo delete -n argowf --all 2>/dev/null || echo "No workflows found"
-kubectl delete seldondeployment --all -n argowf 2>/dev/null || echo "No Seldon deployments found"
-kubectl delete all -n argowf -l seldon-deployment-id=iris 2>/dev/null || echo "No Iris resources found"
-
-# Wait for cleanup
-echo "2. Waiting for cleanup to complete..."
-sleep 10
-
-# Recreate
-echo "3. Recreating registry secret..."
-kubectl create secret docker-registry ghcr-secret \
-  --docker-server=ghcr.io \
-  --docker-username=${GITHUB_USERNAME:-"your-username"} \
-  --docker-password=${GITHUB_TOKEN:-"your-token"} \
-  --docker-email=${GITHUB_EMAIL:-"your-email"} \
-  -n argowf --dry-run=client -o yaml | kubectl apply -f -
-
-echo "4. Regenerating ConfigMap..."
-./update-configmap.sh
-kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
-
-echo "5. Recreating ArgoCD application..."
-kubectl apply -f applications/demo-iris-pipeline-app.yaml
-
-echo "6. Syncing ArgoCD..."
-sleep 5  # Give ArgoCD time to detect the app
-argocd app sync homelab-mlops-demo
-
-echo "7. Submitting workflow..."
-argo submit demo_iris_pipeline/workflow.yaml -n argowf
-
-echo "✅ Restart complete! Monitor with:"
-echo "   argocd app get homelab-mlops-demo"
-echo "   argo get iris-demo -n argowf --watch"
-```
-
-Make it executable and use:
-```bash
-chmod +x restart-demo.sh
-
 # Set environment variables (optional)
 export GITHUB_USERNAME=your-username
 export GITHUB_TOKEN=your-token  

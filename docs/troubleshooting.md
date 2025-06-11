@@ -506,6 +506,217 @@ kubectl logs <pod-name> -n argowf -c init --previous
 kubectl logs -f <pod-name> -n argowf --all-containers
 ```
 
+## Container and Pod Debugging
+
+### Finding Container Names in Pods
+
+**Problem:**
+You need to debug a specific container but don't know the container names.
+
+**Solution:**
+```bash
+# List all containers in a pod
+kubectl get pod <pod-name> -n argowf -o jsonpath='{.spec.containers[*].name}'
+
+# Example: Check containers in a Seldon pod
+kubectl get pod iris-default-0-classifier-564d447d7b-jskd7 -n argowf -o jsonpath='{.spec.containers[*].name}'
+# Output: seldon-container-engine classifier
+
+# Get detailed container info including status
+kubectl describe pod <pod-name> -n argowf | grep -A 5 "Containers:"
+
+# For multi-container pods, see container status
+kubectl get pod <pod-name> -n argowf -o yaml | grep -A 10 containerStatuses
+```
+
+### Getting Logs from Specific Containers
+
+**Problem:**
+Default kubectl logs shows mixed output from all containers, making it hard to debug specific issues.
+
+**Solutions:**
+```bash
+# Get logs from a specific container
+kubectl logs <pod-name> -n argowf -c <container-name>
+
+# Example: Get logs from just the classifier container
+kubectl logs iris-default-0-classifier-564d447d7b-jskd7 -n argowf -c classifier
+
+# Get logs from just the seldon-container-engine
+kubectl logs iris-default-0-classifier-564d447d7b-jskd7 -n argowf -c seldon-container-engine
+
+# Use labels to get logs from multiple pods with same container
+kubectl logs -l seldon-app=iris-default -n argowf -c classifier
+
+# Follow logs in real-time from specific container
+kubectl logs -f <pod-name> -n argowf -c <container-name>
+```
+
+### Workflow Container Name Issues
+
+**Problem:**
+Argo workflow container names don't match what you expect:
+
+```bash
+$ argo logs iris-demo -n argowf --container kaniko
+ERRO[2025-06-11T09:14:38.011Z] container kaniko is not valid for pod
+```
+
+**Root Cause:**
+Argo workflows use `main` as the default container name, not the template name.
+
+**Solution:**
+```bash
+# Use 'main' instead of the template name
+argo logs iris-demo -n argowf --container main
+
+# Or get logs from specific workflow pods directly
+kubectl logs iris-demo-kaniko-2925953904 -n argowf -c main
+
+# List all containers in a workflow pod
+kubectl get pod iris-demo-kaniko-2925953904 -n argowf -o jsonpath='{.spec.containers[*].name}'
+# Output: init main wait
+
+# Get logs from the correct container
+kubectl logs iris-demo-kaniko-2925953904 -n argowf -c main
+```
+
+### Managing Large Log Volumes
+
+**Problem:**
+Workflow logs are too large to analyze effectively:
+
+```bash
+$ argo logs iris-demo -n argowf | wc -l
+583
+$ argo logs iris-demo -n argowf > logs.txt
+$ du -k logs.txt
+2944 logs.txt  # 3MB is too much for human consumption
+```
+
+**Solutions:**
+```bash
+# Filter logs for specific information
+argo logs iris-demo -n argowf | grep -i "error\|failed\|warning"
+
+# Get logs from specific step only
+kubectl logs iris-demo-kaniko-2925953904 -n argowf -c main
+
+# Get last N lines of logs
+argo logs iris-demo -n argowf --tail=50
+
+# Search for specific patterns
+argo logs iris-demo -n argowf | grep -i "pushing\|pushed\|ghcr"
+
+# Get logs since specific time
+kubectl logs iris-demo-kaniko-2925953904 -n argowf -c main --since=10m
+
+# Analyze logs by step
+echo "=== Train Step ==="
+kubectl logs iris-demo-train-1086554222 -n argowf -c main | tail -20
+echo "=== Build Step ==="
+kubectl logs iris-demo-kaniko-2925953904 -n argowf -c main | tail -20
+echo "=== Deploy Step ==="
+kubectl logs iris-demo-deploy-2552441111 -n argowf -c main | tail -20
+```
+
+### Testing Container Connectivity
+
+**Problem:**
+You need to test if your application is actually working inside the container, but tools like `curl` might not be available.
+
+**Solutions:**
+```bash
+# Test HTTP endpoints using Python (usually available in Python containers)
+kubectl exec -n argowf <pod-name> -c <container-name> -- python -c "
+import urllib.request
+response = urllib.request.urlopen('http://localhost:8080/health')
+print(response.read().decode('utf-8'))
+"
+
+# Example: Test your FastAPI health endpoint
+kubectl exec -n argowf iris-default-0-classifier-564d447d7b-jskd7 -c classifier -- python -c "
+import urllib.request
+response = urllib.request.urlopen('http://localhost:8080/health')
+print(response.read().decode('utf-8'))
+"
+
+# Test with wget if available
+kubectl exec -n argowf <pod-name> -c <container-name> -- wget -qO- http://localhost:8080/health
+
+# Test TCP connectivity
+kubectl exec -n argowf <pod-name> -c <container-name> -- nc -z localhost 8080
+echo $?  # 0 means success
+
+# Check what processes are running and listening
+kubectl exec -n argowf <pod-name> -c <container-name> -- ps aux
+kubectl exec -n argowf <pod-name> -c <container-name> -- netstat -tlnp
+```
+
+### Container Status Troubleshooting
+
+**Quick Container Health Check:**
+```bash
+# Check container ready status
+kubectl get pod <pod-name> -n argowf -o jsonpath='{.status.containerStatuses[*].ready}'
+
+# Check container restart count
+kubectl get pod <pod-name> -n argowf -o jsonpath='{.status.containerStatuses[*].restartCount}'
+
+# Get container state details
+kubectl get pod <pod-name> -n argowf -o jsonpath='{.status.containerStatuses[*].state}'
+
+# Example: Check specific Seldon containers
+kubectl get pod iris-default-0-classifier-564d447d7b-jskd7 -n argowf -o yaml | grep -A 20 containerStatuses
+```
+
+### Efficient Log Analysis Workflow
+
+**Step-by-step debugging approach:**
+```bash
+# 1. Identify the problem pod
+kubectl get pods -n argowf | grep -E "(Error|CrashLoop|ImagePull)"
+
+# 2. Check container names
+kubectl get pod <pod-name> -n argowf -o jsonpath='{.spec.containers[*].name}'
+
+# 3. Check container status
+kubectl describe pod <pod-name> -n argowf | grep -A 10 "Container States"
+
+# 4. Get recent logs from each container
+for container in $(kubectl get pod <pod-name> -n argowf -o jsonpath='{.spec.containers[*].name}'); do
+  echo "=== Container: $container ==="
+  kubectl logs <pod-name> -n argowf -c $container --tail=20
+  echo ""
+done
+
+# 5. Test connectivity if container is running
+kubectl exec -n argowf <pod-name> -c <container-name> -- python -c "
+import urllib.request
+try:
+    response = urllib.request.urlopen('http://localhost:8080/health')
+    print('✅ Health check passed:', response.read().decode('utf-8'))
+except Exception as e:
+    print('❌ Health check failed:', str(e))
+"
+```
+
+### Container Resource Debugging
+
+**Check if containers are resource-constrained:**
+```bash
+# Check current resource usage
+kubectl top pod <pod-name> -n argowf --containers
+
+# Check resource limits vs usage
+kubectl describe pod <pod-name> -n argowf | grep -A 10 -B 5 "Limits\|Requests"
+
+# Check for OOMKilled events
+kubectl get events -n argowf --field-selector involvedObject.name=<pod-name> | grep -i "oom\|killed"
+```
+
+This systematic approach helps you quickly identify which container is failing and why, especially in complex multi-container pods like Seldon deployments.
+
 ## Recovery Procedures
 
 ### Complete Pipeline Reset
