@@ -271,6 +271,10 @@ spec:
               name: classifier
               type: MODEL
               children: []
+              endpoint:
+                type: REST
+                service_host: localhost
+                service_port: 8080
             componentSpecs:
             - spec:
                 imagePullSecrets:
@@ -285,7 +289,12 @@ spec:
                   - name: PREDICTIVE_UNIT_HTTP_SERVICE_PORT
                     value: "8080"  
                   ports:
-                  - containerPort: 8080
+                  - name: http # Or a more generic name like 'service'
+                    containerPort: 8080
+                    protocol: TCP
+                  - name: metrics
+                    containerPort: 6000 # Assuming your app serves metrics here
+                    protocol: TCP
                   readinessProbe:
                     httpGet:
                       path: /health
