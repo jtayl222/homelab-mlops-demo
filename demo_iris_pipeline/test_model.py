@@ -6,8 +6,14 @@ from sklearn.datasets import load_iris
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 
-def load_model(model_path="/model/model.pkl"):
+def load_model(model_path=None):
     """Load the trained model"""
+    # Check environment variable first, then fall back to parameter or default
+    if model_path is None:
+        model_path = os.getenv("MODEL_PATH", "/model/model.pkl")
+    
+    print(f"Loading model from: {model_path}")  # Debug info
+    
     with open(model_path, "rb") as f:
         return pickle.load(f)
 

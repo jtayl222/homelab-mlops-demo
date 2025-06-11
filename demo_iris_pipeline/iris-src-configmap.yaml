@@ -56,24 +56,26 @@ data:
   test_model.py: "import pickle\nimport numpy as np\nimport json\nimport os\nfrom
     sklearn.datasets import load_iris\nfrom sklearn.metrics import accuracy_score,
     classification_report, confusion_matrix\nfrom sklearn.model_selection import train_test_split\n\ndef
-    load_model(model_path=\"/model/model.pkl\"):\n    \"\"\"Load the trained model\"\"\"\n
-    \   with open(model_path, \"rb\") as f:\n        return pickle.load(f)\n\ndef
-    load_test_data():\n    \"\"\"Load and split iris dataset for testing\"\"\"\n    X,
-    y = load_iris(return_X_y=True)\n    X_train, X_test, y_train, y_test = train_test_split(\n
-    \       X, y, test_size=0.3, random_state=42, stratify=y\n    )\n    return X_test,
-    y_test\n\ndef validate_model_accuracy(model, X_test, y_test, min_accuracy=0.85):\n
-    \   \"\"\"Test model accuracy meets minimum threshold\"\"\"\n    predictions =
-    model.predict(X_test)\n    accuracy = accuracy_score(y_test, predictions)\n    \n
-    \   print(f\"Model Accuracy: {accuracy:.4f}\")\n    print(f\"Required Minimum:
-    {min_accuracy}\")\n    \n    if accuracy < min_accuracy:\n        raise ValueError(f\"Model
-    accuracy {accuracy:.4f} below threshold {min_accuracy}\")\n    \n    return accuracy,
-    predictions\n\ndef validate_model_predictions(model, X_test):\n    \"\"\"Test
-    model prediction format and types\"\"\"\n    predictions = model.predict(X_test)\n
-    \   \n    # Check prediction shape\n    assert len(predictions) == len(X_test),
-    \"Prediction count mismatch\"\n    \n    # Check prediction values are valid class
-    labels (0, 1, 2 for iris)\n    unique_preds = np.unique(predictions)\n    assert
-    all(pred in [0, 1, 2] for pred in unique_preds), \"Invalid prediction classes\"\n
-    \   \n    # Check no NaN or infinite values\n    assert not np.any(np.isnan(predictions)),
+    load_model(model_path=None):\n    \"\"\"Load the trained model\"\"\"\n    # Check
+    environment variable first, then fall back to parameter or default\n    if model_path
+    is None:\n        model_path = os.getenv(\"MODEL_PATH\", \"/model/model.pkl\")\n
+    \   \n    print(f\"Loading model from: {model_path}\")  # Debug info\n    \n    with
+    open(model_path, \"rb\") as f:\n        return pickle.load(f)\n\ndef load_test_data():\n
+    \   \"\"\"Load and split iris dataset for testing\"\"\"\n    X, y = load_iris(return_X_y=True)\n
+    \   X_train, X_test, y_train, y_test = train_test_split(\n        X, y, test_size=0.3,
+    random_state=42, stratify=y\n    )\n    return X_test, y_test\n\ndef validate_model_accuracy(model,
+    X_test, y_test, min_accuracy=0.85):\n    \"\"\"Test model accuracy meets minimum
+    threshold\"\"\"\n    predictions = model.predict(X_test)\n    accuracy = accuracy_score(y_test,
+    predictions)\n    \n    print(f\"Model Accuracy: {accuracy:.4f}\")\n    print(f\"Required
+    Minimum: {min_accuracy}\")\n    \n    if accuracy < min_accuracy:\n        raise
+    ValueError(f\"Model accuracy {accuracy:.4f} below threshold {min_accuracy}\")\n
+    \   \n    return accuracy, predictions\n\ndef validate_model_predictions(model,
+    X_test):\n    \"\"\"Test model prediction format and types\"\"\"\n    predictions
+    = model.predict(X_test)\n    \n    # Check prediction shape\n    assert len(predictions)
+    == len(X_test), \"Prediction count mismatch\"\n    \n    # Check prediction values
+    are valid class labels (0, 1, 2 for iris)\n    unique_preds = np.unique(predictions)\n
+    \   assert all(pred in [0, 1, 2] for pred in unique_preds), \"Invalid prediction
+    classes\"\n    \n    # Check no NaN or infinite values\n    assert not np.any(np.isnan(predictions)),
     \"NaN values in predictions\"\n    assert not np.any(np.isinf(predictions)), \"Infinite
     values in predictions\"\n    \n    print(\"✅ Model prediction validation passed\")\n
     \   return True\n\ndef validate_model_performance(model, X_test, y_test):\n    \"\"\"Comprehensive
