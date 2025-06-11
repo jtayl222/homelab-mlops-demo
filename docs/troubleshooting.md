@@ -282,6 +282,42 @@ kubectl create configmap iris-src \
 # Verify ConfigMap exists
 kubectl get configmap iris-src -n argowf -o yaml
 ```
+## ArgoCD Authentication Issues
+
+### Session Expired Error
+
+**Problem:**
+```bash
+$ argocd app list | grep dev
+{"level":"fatal","msg":"rpc error: code = Unauthenticated desc = invalid session: token has invalid claims: token is expired","time":"2025-06-11T13:33:03-04:00"}
+```
+
+**Root Cause:**
+ArgoCD CLI sessions expire after a certain period (typically 24 hours). The authentication token stored locally is no longer valid.
+
+**Solutions:**
+
+#### Quick Re-login
+```bash
+# Re-authenticate with ArgoCD
+argocd login localhost:32080
+
+# When prompted, enter:
+# Username: admin
+# Password: <your-admin-password>
+
+# Verify connection works
+argocd app list
+```
+
+#### Get Admin Password (if forgotten)
+```bash
+# Get the admin password from Kubernetes secret
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d && echo
+
+# Copy the output and use it for login
+```
 
 ## GitOps and ArgoCD Issues
 

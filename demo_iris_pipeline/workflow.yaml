@@ -307,71 +307,46 @@ spec:
     inputs:
       parameters:
       - name: image-tag
+      - name: model-version
     container:
-      image: bitnami/kubectl:1.30
+      image: python:3.12-slim
       resources:
         requests:
-          memory: "256Mi"
+          memory: "512Mi"
           cpu: "200m"
         limits:
-          memory: "512Mi"
+          memory: "1Gi"
           cpu: "500m"
       command: [sh, -c]
       args:
       - |
-        cat <<EOF > /tmp/seldon.yaml
-        apiVersion: machinelearning.seldon.io/v1
-        kind: SeldonDeployment
-        metadata:
-          name: iris
-          namespace: argowf
-        spec:
-          predictors:
-          - name: default
-            graph:
-              name: classifier
-              type: MODEL
-              children: []
-              endpoint:
-                type: REST
-                service_host: localhost
-                service_port: 8080
-            componentSpecs:
-            - spec:
-                imagePullSecrets:
-                - name: ghcr-secret
-                containers:
-                - name: classifier
-                  image: ghcr.io/jtayl222/iris:{{inputs.parameters.image-tag}}
-                  imagePullPolicy: Always
-                  env:                              # ADD THIS SECTION
-                  - name: PREDICTIVE_UNIT_SERVICE_PORT     # Tell Seldon what port to use
-                    value: "8080"
-                  - name: PREDICTIVE_UNIT_HTTP_SERVICE_PORT
-                    value: "8080"  
-                  ports:
-                  - name: http # Or a more generic name like 'service'
-                    containerPort: 8080
-                    protocol: TCP
-                  - name: metrics
-                    containerPort: 6000 # Assuming your app serves metrics here
-                    protocol: TCP
-                  - name: prometheus-metrics
-                    containerPort: 9500
-                    protocol: TCP
-                  readinessProbe:
-                    httpGet:
-                      path: /health
-                      port: 8080
-                    initialDelaySeconds: 10
-                    periodSeconds: 5
-                  livenessProbe:
-                    httpGet:
-                      path: /health
-                      port: 8080
-                    initialDelaySeconds: 30
-                    periodSeconds: 10
-        EOF
-        kubectl apply -f /tmp/seldon.yaml
+        # Install dependencies
+        pip install pyyaml
+
+        # Install kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        mv kubectl /usr/local/bin/
+
+        # Copy deployment script
+        cp /src/deploy_model.py /workspace/
+        
+        cd /workspace
+        
+        # Set environment variables
+        export IMAGE_TAG={{inputs.parameters.image-tag}}
+        export MODEL_VERSION={{inputs.parameters.model-version}}
+        export NAMESPACE=argowf
+        export MODEL_NAME=iris
+        
+        # Run deployment
+        python deploy_model.py
+        
+        echo "Deployment completed"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
 
 

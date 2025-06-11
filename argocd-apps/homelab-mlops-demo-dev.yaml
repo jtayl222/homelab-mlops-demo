@@ -1,0 +1,21 @@
+# Create: argocd-apps/homelab-mlops-demo-dev.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: homelab-mlops-demo-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: feature/semantic-versioning  # Your feature branch
+    path: .
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argowf-dev  # Different namespace for dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true  # Auto-create dev namespace
