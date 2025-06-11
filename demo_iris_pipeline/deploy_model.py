@@ -128,7 +128,7 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                                         "volumeMounts": [
                                             {
                                                 "name": "model-storage",
-                                                "mountPath": "/mnt/models"
+                                                "mountPath": "/mnt/model"
                                             }
                                         ]
                                     }

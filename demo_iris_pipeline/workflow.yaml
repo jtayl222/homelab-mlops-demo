@@ -3,6 +3,7 @@ kind: Workflow
 metadata:
   name: iris-demo
 spec:
+  serviceAccountName: argo-workflow
   entrypoint: iris-pipeline
   # Add volumes at workflow level
   volumes:
@@ -303,6 +304,8 @@ spec:
         echo "Model Version: $(cat /workspace/model_version.txt)"
         echo "Version Tag: $(cat /workspace/version_tag.txt)"
 
+  # Alternative approach using a container with both tools:
+
   - name: deploy
     inputs:
       parameters:
@@ -320,14 +323,21 @@ spec:
       command: [sh, -c]
       args:
       - |
-        # Install dependencies
-        pip install pyyaml
-
+        set -e  # Exit on any error
+        
+        # Install system dependencies
+        apt-get update && apt-get install -y curl
+        
         # Install kubectl
-        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        echo "📦 Installing kubectl..."
+        KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
         chmod +x kubectl
         mv kubectl /usr/local/bin/
-
+        
+        # Install Python packages
+        pip install pyyaml
+        
         # Copy deployment script
         cp /src/deploy_model.py /workspace/
         
@@ -336,13 +346,23 @@ spec:
         # Set environment variables
         export IMAGE_TAG={{inputs.parameters.image-tag}}
         export MODEL_VERSION={{inputs.parameters.model-version}}
-        export NAMESPACE=argowf
+        export NAMESPACE=argowf-dev
         export MODEL_NAME=iris
         
+        # Verify kubectl works
+        kubectl version --client
+        
+        # Debug: Show environment
+        echo "🔍 Environment:"
+        echo "IMAGE_TAG: $IMAGE_TAG"
+        echo "MODEL_VERSION: $MODEL_VERSION"
+        echo "NAMESPACE: $NAMESPACE"
+        
         # Run deployment
+        echo "🚀 Running deployment script..."
         python deploy_model.py
         
-        echo "Deployment completed"
+        echo "✅ Deployment completed successfully"
       volumeMounts:
       - name: workdir
         mountPath: /workspace
