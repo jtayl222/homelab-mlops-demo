@@ -46,7 +46,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: local-path
+  storageClassName: shared-nfs
 EOF
 
 echo "✅ workdir PVC created in $NAMESPACE"

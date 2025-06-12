@@ -1,26 +1,24 @@
 #!/bin/bash
-# update-configmap.sh - ConfigMap management ONLY
-
 set -e
 
-NAMESPACE=${1:-argowf}
+NAMESPACE=${1:-argowf-dev}
 
 echo "📋 Updating ConfigMap iris-src in namespace: $NAMESPACE"
 
-# Generate ConfigMap for the specified namespace
-kubectl create configmap iris-src \
-  --from-file=serve.py=demo_iris_pipeline/serve.py \
-  --from-file=train.py=demo_iris_pipeline/train.py \
-  --from-file=test_model.py=demo_iris_pipeline/test_model.py \
-  --from-file=version_model.py=demo_iris_pipeline/version_model.py \
-  --from-file=deploy_model.py=demo_iris_pipeline/deploy_model.py \
-  --from-file=Dockerfile=demo_iris_pipeline/Dockerfile \
-  --from-file=requirements.txt=demo_iris_pipeline/requirements.txt \
-  --namespace=$NAMESPACE \
-  --dry-run=client -o yaml | \
-  grep -v "creationTimestamp" > demo_iris_pipeline/iris-src-configmap-${NAMESPACE}.yaml
+# Delete existing ConfigMap if it exists
+kubectl delete configmap iris-src -n $NAMESPACE --ignore-not-found=true
 
-# Apply the ConfigMap
-kubectl apply -f demo_iris_pipeline/iris-src-configmap-${NAMESPACE}.yaml
+# Create new ConfigMap from directory
+kubectl create configmap iris-src \
+  --from-file=demo_iris_pipeline/ \
+  --namespace=$NAMESPACE
 
 echo "✅ ConfigMap iris-src updated successfully in namespace $NAMESPACE!"
+
+# Verify monitor_model.py is included
+if kubectl get configmap iris-src -n $NAMESPACE -o yaml | grep -q "monitor_model.py:"; then
+    echo "✅ monitor_model.py is included in ConfigMap"
+else
+    echo "❌ monitor_model.py is NOT in ConfigMap"
+    exit 1
+fi

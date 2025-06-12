@@ -5,12 +5,12 @@ metadata:
   namespace: argocd
   labels:
     environment: dev
-    branch: feature-semantic-versioning
+    branch: feature-monitoring
 spec:
   project: default
   source:
     repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
-    targetRevision: feature/semantic-versioning
+    targetRevision: feature/monitoring
     path: .
   destination:
     server: https://kubernetes.default.svc

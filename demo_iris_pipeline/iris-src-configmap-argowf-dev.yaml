@@ -138,6 +138,55 @@ data:
     Deployment failed: {result.stderr}\")\n            exit(1)\n            \n    except
     Exception as e:\n        print(f\"❌ Deployment failed: {str(e)}\")\n        exit(1)\n\nif
     __name__ == \"__main__\":\n    main()"
+  monitor_model.py: "#!/usr/bin/env python3\n\"\"\"\nModel Monitoring Script for MLOps
+    Pipeline\nExports metrics to Prometheus for Grafana visualization\n\"\"\"\n\nimport
+    os\nimport json\nimport time\nimport logging\nimport subprocess\n\n# Configure
+    logging\nlogging.basicConfig(level=logging.INFO)\nlogger = logging.getLogger(__name__)\n\ndef
+    get_environment_vars():\n    \"\"\"Get environment variables for monitoring\"\"\"\n
+    \   return {\n        'model_version': os.getenv('MODEL_VERSION', 'unknown'),\n
+    \       'environment': os.getenv('NAMESPACE', 'unknown'),\n        'stage': os.getenv('PIPELINE_STAGE',
+    'unknown'),\n        'pushgateway_url': os.getenv('PUSHGATEWAY_URL', 'http://prometheus-pushgateway.monitoring.svc.cluster.local:9091')\n
+    \   }\n\ndef load_validation_results():\n    \"\"\"Load model validation results\"\"\"\n
+    \   validation_path = os.getenv('VALIDATION_RESULTS_PATH', '/workspace/validation_results.json')\n
+    \   \n    if not os.path.exists(validation_path):\n        logger.warning(f\"Validation
+    results not found at {validation_path}\")\n        return {}\n    \n    try:\n
+    \       with open(validation_path, 'r') as f:\n            return json.load(f)\n
+    \   except Exception as e:\n        logger.error(f\"Error loading validation results:
+    {e}\")\n        return {}\n\ndef export_metrics_to_pushgateway():\n    \"\"\"Export
+    metrics to Prometheus Pushgateway using curl\"\"\"\n    env_vars = get_environment_vars()\n
+    \   validation_results = load_validation_results()\n    \n    if not validation_results:\n
+    \       logger.warning(\"No validation results found, creating default metrics\")\n
+    \       validation_results = {\n            'accuracy': 0.0,\n            'precision':
+    0.0,\n            'recall': 0.0,\n            'f1_score': 0.0,\n            'validation_status':
+    'UNKNOWN'\n        }\n    \n    # Create metrics in Prometheus format\n    metrics_data
+    = f\"\"\"# MLOps Pipeline Metrics\n# TYPE iris_model_accuracy gauge\niris_model_accuracy{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('accuracy', 0)}\n\n# TYPE iris_model_precision gauge  \niris_model_precision{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('precision', 0)}\n\n# TYPE iris_model_recall gauge\niris_model_recall{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('recall', 0)}\n\n# TYPE iris_model_f1_score gauge\niris_model_f1_score{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('f1_score', 0)}\n\n# TYPE iris_pipeline_stage_success
+    counter\niris_pipeline_stage_success{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\",stage=\"{env_vars['stage']}\"}}
+    1\n\n# TYPE iris_model_deployment_timestamp gauge\niris_model_deployment_timestamp{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {time.time()}\n\"\"\"\n    \n    # Push metrics using curl (available in most
+    containers)\n    pushgateway_url = f\"{env_vars['pushgateway_url']}/metrics/job/iris-mlops-pipeline/version/{env_vars['model_version']}/environment/{env_vars['environment']}/stage/{env_vars['stage']}\"\n
+    \   \n    # Write metrics to temp file\n    with open('/tmp/metrics.txt', 'w')
+    as f:\n        f.write(metrics_data)\n    \n    # Install curl first\n    try:\n
+    \       subprocess.run(['apt-get', 'update'], check=True, capture_output=True)\n
+    \       subprocess.run(['apt-get', 'install', '-y', 'curl'], check=True, capture_output=True)\n
+    \   except subprocess.CalledProcessError as e:\n        logger.error(f\"Failed
+    to install curl: {e}\")\n        return\n\n    # Use curl to push metrics\n    try:\n
+    \       result = subprocess.run([\n            'curl', '-X', 'POST', \n            '--data-binary',
+    '@/tmp/metrics.txt',\n            pushgateway_url\n        ], capture_output=True,
+    text=True, timeout=30)\n        \n        if result.returncode == 0:\n            logger.info(f\"Successfully
+    pushed metrics to {pushgateway_url}\")\n        else:\n            logger.error(f\"Failed
+    to push metrics: {result.stderr}\")\n            \n    except subprocess.TimeoutExpired:\n
+    \       logger.error(\"Timeout pushing metrics to Pushgateway\")\n    except Exception
+    as e:\n        logger.error(f\"Error pushing metrics: {e}\")\n\ndef main():\n
+    \   \"\"\"Main monitoring function\"\"\"\n    logger.info(\"\U0001F50D Starting
+    MLOps monitoring...\")\n    \n    env_vars = get_environment_vars()\n    logger.info(f\"Environment:
+    {env_vars}\")\n    \n    # Load data\n    validation_results = load_validation_results()\n
+    \   logger.info(f\"Validation Results: {validation_results}\")\n    \n    # Export
+    metrics\n    export_metrics_to_pushgateway()\n    \n    logger.info(\"✅ Monitoring
+    metrics exported successfully\")\n\nif __name__ == \"__main__\":\n    main()"
   requirements.txt: |
     scikit-learn==1.4.2
     mlflow==2.12.1

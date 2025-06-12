@@ -36,10 +36,22 @@ echo "6️⃣ Verifying environment..."
 ./scripts/verify-environment.sh $NAMESPACE
 
 echo ""
-echo "🎯 Development environment setup complete!"
+echo "7️⃣ Setting up monitoring infrastructure..."
+if ! kubectl get deployment prometheus-pushgateway -n monitoring >/dev/null 2>&1; then
+    echo "Installing Prometheus Pushgateway..."
+    ./scripts/setup-monitoring.sh monitoring false
+else
+    echo "✅ Monitoring infrastructure already exists"
+fi
+
 echo ""
-echo "Next steps:"
-echo "  1. git add -A && git commit -m 'your changes'"
-echo "  2. git push origin $FEATURE_BRANCH"
-echo "  3. argocd app sync homelab-mlops-demo-$(echo $NAMESPACE | sed 's/argowf-//')"
-echo "  4. argo submit demo_iris_pipeline/workflow.yaml -n $NAMESPACE --watch"
+echo "8️⃣ Testing monitoring connectivity..."
+./scripts/test-monitoring.sh monitoring $NAMESPACE
+
+echo ""
+echo "🎯 Development environment with monitoring setup complete!"
+echo ""
+echo "📊 Monitoring URLs:"
+echo "   Pushgateway: kubectl port-forward -n monitoring svc/prometheus-pushgateway 9091:9091"
+echo "   Prometheus: kubectl port-forward -n monitoring svc/prometheus-stack-kube-prom-prometheus 9090:9090"
+echo "   Grafana: kubectl port-forward -n monitoring svc/prometheus-stack-grafana 3000:80"

@@ -1,0 +1,103 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Iris MLOps Pipeline Monitoring",
+    "tags": ["mlops", "iris", "semantic-versioning"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Model Accuracy by Version",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "iris_model_accuracy",
+            "legendFormat": "{{version}} ({{environment}})"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Pipeline Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(iris_pipeline_success_total[5m]) / (rate(iris_pipeline_success_total[5m]) + rate(iris_pipeline_failure_total[5m]))",
+            "legendFormat": "Success Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Pipeline Duration by Stage",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "iris_pipeline_duration_seconds",
+            "legendFormat": "{{stage}} - {{version}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Model Serving Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "iris_model_serving_status",
+            "legendFormat": "{{version}} ({{environment}})"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "mappings": [
+              {"options": {"0": {"text": "Unhealthy", "color": "red"}}, "type": "value"},
+              {"options": {"1": {"text": "Healthy", "color": "green"}}, "type": "value"}
+            ]
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Model Versions Timeline",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "iris_model_deployment_timestamp",
+            "legendFormat": "{{version}} deployed"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

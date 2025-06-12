@@ -25,28 +25,52 @@ spec:
       tasks:
       - name: train
         template: train
+      
       - name: validate
         template: model-validation
         dependencies: [train]
-      - name: version-model
+      
+      - name: semantic-versioning
         template: semantic-versioning
-        dependencies: [validate]
+        dependencies: [validate]  # Move this to depend on validate directly
+    
+      - name: monitor-validate  # Move monitoring after versioning
+        template: monitor
+        arguments:
+          parameters:
+          - name: model-version
+            value: "{{tasks.semantic-versioning.outputs.parameters.model-version}}"
+          - name: pipeline-stage
+            value: "validate"
+        dependencies: [semantic-versioning]
+      
       - name: kaniko
         template: kaniko
-        dependencies: [version-model]  # Changed from validate
         arguments:
           parameters:
           - name: version-tag
-            value: "{{tasks.version-model.outputs.parameters.version-tag}}"
+            value: "{{tasks.semantic-versioning.outputs.parameters.version-tag}}"
+        dependencies: [monitor-validate]  # Update dependency
+    
       - name: deploy
         template: deploy
-        dependencies: [kaniko]
         arguments:
           parameters:
           - name: image-tag
-            value: "{{tasks.kaniko.outputs.parameters.image-tag}}"
+            value: "{{tasks.semantic-versioning.outputs.parameters.version-tag}}"
           - name: model-version
-            value: "{{tasks.version-model.outputs.parameters.model-version}}"
+            value: "{{tasks.semantic-versioning.outputs.parameters.model-version}}"
+        dependencies: [kaniko]
+      
+      - name: monitor-deploy
+        template: monitor
+        arguments:
+          parameters:
+          - name: model-version
+            value: "{{tasks.semantic-versioning.outputs.parameters.model-version}}"
+          - name: pipeline-stage
+            value: "deploy"
+        dependencies: [deploy]
 
   - name: train
     container:
@@ -150,11 +174,11 @@ spec:
       image: busybox
       resources:
         requests:
-          memory: "512Mi"
-          cpu: "500m"
-        limits:
-          memory: "1Gi"
+          memory: "2Gi"
           cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
       command: ["/bin/sh", "-c"]
       args:
       - |
@@ -210,11 +234,11 @@ spec:
       image: python:3.12-slim
       resources:
         requests:
-          memory: "1Gi"
-          cpu: "500m"
-        limits:
           memory: "2Gi"
-          cpu: "1000m"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
       volumeMounts:
       - name: workdir
         mountPath: /workspace  # Only mount workdir once
@@ -269,11 +293,11 @@ spec:
       image: python:3.12-slim
       resources:
         requests:
-          memory: "512Mi"
-          cpu: "200m"
+          memory: "2Gi"
+          cpu: "1"
         limits:
-          memory: "1Gi"
-          cpu: "500m"
+          memory: "4Gi"
+          cpu: "2"
       volumeMounts:
       - name: workdir
         mountPath: /workspace
@@ -315,11 +339,11 @@ spec:
       image: python:3.12-slim
       resources:
         requests:
-          memory: "512Mi"
-          cpu: "200m"
+          memory: "2Gi"
+          cpu: "1"
         limits:
-          memory: "1Gi"
-          cpu: "500m"
+          memory: "4Gi"
+          cpu: "2"
       command: [sh, -c]
       args:
       - |
@@ -363,6 +387,53 @@ spec:
         python deploy_model.py
         
         echo "✅ Deployment completed successfully"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
+
+  - name: monitor
+    inputs:
+      parameters:
+      - name: model-version
+      - name: pipeline-stage
+    container:
+      image: python:3.12-slim
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      command: [sh, -c]
+      args:
+      - |
+        set -e
+        
+        echo "📊 Starting monitoring for stage {{inputs.parameters.pipeline-stage}}..."
+        
+        # Install monitoring dependencies
+        pip install prometheus-client requests mlflow
+        
+        # Copy monitoring script
+        cp /src/monitor_model.py /workspace/
+        
+        cd /workspace
+        
+        # Set environment variables
+        export MODEL_VERSION={{inputs.parameters.model-version}}
+        export PIPELINE_STAGE={{inputs.parameters.pipeline-stage}}
+        export NAMESPACE=argowf-dev
+        export PUSHGATEWAY_URL=http://prometheus-pushgateway.monitoring.svc.cluster.local:9091
+        export VALIDATION_RESULTS_PATH=/workspace/validation_results.json
+        export PIPELINE_METRICS_PATH=/workspace/pipeline_metrics.json
+        
+        # Run monitoring
+        python monitor_model.py
+        
+        echo "✅ Monitoring completed for {{inputs.parameters.pipeline-stage}}"
       volumeMounts:
       - name: workdir
         mountPath: /workspace
