@@ -277,7 +277,7 @@ kubectl create configmap iris-src \
   -n argowf
 
 # Or use the update script
-./update-configmap.sh
+./scripts/update-configmap.sh
 
 # Verify ConfigMap exists
 kubectl get configmap iris-src -n argowf -o yaml
@@ -765,7 +765,7 @@ kubectl delete pods -n argowf -l workflows.argoproj.io/workflow=iris-demo
 
 # Recreate ConfigMap
 kubectl delete configmap iris-src -n argowf
-./update-configmap.sh
+./scripts/update-configmap.sh
 
 # Restart workflow
 argo submit demo_iris_pipeline/workflow.yaml -n argowf --watch

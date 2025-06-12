@@ -69,7 +69,7 @@ templates:
 **Function**:
 - Packages Python scripts, Dockerfile, and requirements into a ConfigMap
 - Must be run whenever source code changes
-- Creates `iris-src-configmap.yaml` with all application files
+- Creates ConfigMap iris-src with all application files
 - Separates source code management from workflow orchestration
 
 ```bash
@@ -84,12 +84,12 @@ templates:
 
 1. **Developer Workflow**:
    - Modify `train.py` or other source files
-   - Run update-configmap.sh to package changes
+   - Run ./scripts/update-configmap.sh to package changes
    - Commit and push to Git
 
 2. **GitOps Deployment**: 
    - ArgoCD (via `demo-iris-pipeline-app.yaml`) detects Git changes
-   - Automatically syncs `workflow.yaml` and `iris-src-configmap.yaml` to Kubernetes
+   - Automatically syncs `workflow.yaml` to Kubernetes
    - Argo Workflows executes the pipeline using the updated source code
 
 3. **Pipeline Execution**:
@@ -113,7 +113,6 @@ homelab-mlops-demo/
 │   └── argocd-workflow-rbac.yaml  # RBAC for ArgoCD workflow management
 ├── demo_iris_pipeline/             # ML pipeline components
 │   ├── workflow.yaml              # Argo Workflow definition
-│   ├── iris-src-configmap.yaml    # Kubernetes ConfigMap for source files
 │   ├── train.py                   # ML training script
 │   ├── serve.py                   # Model serving endpoint
 │   ├── Dockerfile                 # Container image definition
@@ -175,10 +174,7 @@ kubectl apply -f applications/demo-iris-pipeline-app.yaml
 ### 4. Generate and Apply ConfigMap
 ```bash
 # Generate ConfigMap with source files
-./update-configmap.sh
-
-# Apply the ConfigMap
-kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
+./scripts/update-configmap.sh
 ```
 
 ### 5. Run the ML Pipeline
@@ -254,7 +250,6 @@ kubectl create secret docker-registry ghcr-secret \
 2. **Regenerate ConfigMap**: 
    ```bash
    ./update-configmap.sh
-   kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
    ```
 3. **Update Workflow**: Modify `workflow.yaml` if needed
 4. **Commit & Push**: GitOps will automatically deploy changes
@@ -275,14 +270,8 @@ python demo_iris_pipeline/serve.py
 
 #### 2. Test ConfigMap Generation
 ```bash
-# Generate ConfigMap without applying
-./update-configmap.sh
-
-# Verify the ConfigMap looks correct
-cat demo_iris_pipeline/iris-src-configmap.yaml | head -20
-
-# Check for syntax errors
-kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml --dry-run=client
+# Update the ConfigMap with new source files
+./scripts/update-configmap.sh
 ```
 
 #### 3. Test Workflow Validation
@@ -344,8 +333,7 @@ echo "🧪 Testing MLOps pipeline changes..."
 
 # Test ConfigMap generation
 echo "1. Testing ConfigMap generation..."
-./update-configmap.sh
-kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml --dry-run=client
+./scripts/update-configmap.sh
 
 # Validate workflow
 echo "2. Validating workflow YAML..."
@@ -436,7 +424,6 @@ The `update-configmap.sh` script generates a Kubernetes ConfigMap containing:
 ```bash
 # Regenerate ConfigMap after source changes
 ./update-configmap.sh
-kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
 ```
 
 ## Model Serving
@@ -500,7 +487,7 @@ kubectl apply -f applications/demo-iris-pipeline-app.yaml
 - Use full paths to conda binaries if environment sourcing fails
 
 **ConfigMap Not Updating**:
-- Run `./update-configmap.sh` after modifying source files
+- Run `./scripts/update-configmap.sh` after modifying source files
 - Apply the generated ConfigMap with `kubectl apply`
 
 **JSON Input Errors**:
@@ -825,8 +812,7 @@ kubectl create secret docker-registry ghcr-secret \
   -n argowf
 
 # 3. Regenerate ConfigMap with latest source
-./update-configmap.sh
-kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
+./scripts/update-configmap.sh # with namespace if not argowf
 
 # 4. Recreate ArgoCD application
 kubectl apply -f applications/demo-iris-pipeline-app.yaml

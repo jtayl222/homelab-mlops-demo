@@ -8,7 +8,7 @@ import os
 import json
 import time
 import logging
-import subprocess
+import requests  # Use requests instead of curl
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +39,7 @@ def load_validation_results():
         return {}
 
 def export_metrics_to_pushgateway():
-    """Export metrics to Prometheus Pushgateway using curl"""
+    """Export metrics to Prometheus Pushgateway using requests"""
     env_vars = get_environment_vars()
     validation_results = load_validation_results()
     
@@ -74,38 +74,29 @@ iris_pipeline_stage_success{{version="{env_vars['model_version']}",environment="
 iris_model_deployment_timestamp{{version="{env_vars['model_version']}",environment="{env_vars['environment']}"}} {time.time()}
 """
     
-    # Push metrics using curl (available in most containers)
+    # Push metrics using requests with timeout
     pushgateway_url = f"{env_vars['pushgateway_url']}/metrics/job/iris-mlops-pipeline/version/{env_vars['model_version']}/environment/{env_vars['environment']}/stage/{env_vars['stage']}"
     
-    # Write metrics to temp file
-    with open('/tmp/metrics.txt', 'w') as f:
-        f.write(metrics_data)
-    
-    # Install curl first
     try:
-        subprocess.run(['apt-get', 'update'], check=True, capture_output=True)
-        subprocess.run(['apt-get', 'install', '-y', 'curl'], check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to install curl: {e}")
-        return
-
-    # Use curl to push metrics
-    try:
-        result = subprocess.run([
-            'curl', '-X', 'POST', 
-            '--data-binary', '@/tmp/metrics.txt',
-            pushgateway_url
-        ], capture_output=True, text=True, timeout=30)
+        logger.info(f"Pushing metrics to {pushgateway_url}")
+        response = requests.post(
+            pushgateway_url,
+            data=metrics_data,
+            headers={'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'},
+            timeout=10  # 10 second timeout
+        )
         
-        if result.returncode == 0:
-            logger.info(f"Successfully pushed metrics to {pushgateway_url}")
+        if response.status_code == 200:
+            logger.info("✅ Successfully pushed metrics to Pushgateway")
         else:
-            logger.error(f"Failed to push metrics: {result.stderr}")
+            logger.warning(f"⚠️ Failed to push metrics: {response.status_code} - {response.text}")
             
-    except subprocess.TimeoutExpired:
-        logger.error("Timeout pushing metrics to Pushgateway")
+    except requests.exceptions.Timeout:
+        logger.error("❌ Timeout pushing metrics to Pushgateway")
+    except requests.exceptions.ConnectionError:
+        logger.error("❌ Connection error to Pushgateway")
     except Exception as e:
-        logger.error(f"Error pushing metrics: {e}")
+        logger.error(f"❌ Error pushing metrics: {e}")
 
 def main():
     """Main monitoring function"""
@@ -121,7 +112,7 @@ def main():
     # Export metrics
     export_metrics_to_pushgateway()
     
-    logger.info("✅ Monitoring metrics exported successfully")
+    logger.info("✅ Monitoring completed")
 
 if __name__ == "__main__":
     main()

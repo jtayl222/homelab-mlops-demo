@@ -88,8 +88,6 @@ echo "  GITHUB_EMAIL: $GITHUB_EMAIL"
 if [[ "$NAMESPACE" == "argowf" ]]; then
     ENV_TYPE="production"
     ARGOCD_APP="homelab-mlops-demo"
-    CONFIGMAP_SCRIPT="./scripts/update-configmap.sh"
-    CONFIGMAP_FILE="demo_iris_pipeline/iris-src-configmap.yaml"
     APP_MANIFEST="applications/demo-iris-pipeline-app.yaml"
 else
     ENV_TYPE="development"
@@ -99,8 +97,6 @@ else
         DEV_ENV_NAME="dev"
     fi
     ARGOCD_APP="homelab-mlops-demo-$DEV_ENV_NAME"
-    CONFIGMAP_SCRIPT="./scripts/update-configmap.sh"
-    CONFIGMAP_FILE="demo_iris_pipeline/iris-src-configmap-$NAMESPACE.yaml"
     APP_MANIFEST="applications/demo-iris-pipeline-$DEV_ENV_NAME-app.yaml"
 fi
 
@@ -144,7 +140,6 @@ deploy() {
     if [[ "$NAMESPACE" == "argowf" ]]; then
         # Production environment
         ./scripts/update-configmap.sh
-        kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
     else
         # Development environment
         ./scripts/update-configmap.sh "$NAMESPACE"

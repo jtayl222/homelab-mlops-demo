@@ -44,65 +44,37 @@ data:
     deployment_name,\n            \"predictors\": [\n                {\n                    \"name\":
     \"default\",\n                    \"replicas\": 1,\n                    \"graph\":
     {\n                        \"name\": \"classifier\",\n                        \"implementation\":
-    \"SKLEARN_SERVER\",\n                        \"modelUri\": \"pvc://workdir/model\",\n
-    \                       \"endpoint\": {\n                            \"type\":
-    \"REST\",\n                            \"service_host\": \"localhost\",\n                            \"service_port\":
-    8080\n                        }\n                    },\n                    \"componentSpecs\":
-    [\n                        {\n                            \"spec\": {\n                                \"containers\":
+    \"SKLEARN_SERVER\",\n                        \"modelUri\": \"pvc://workdir/model\",
+    \ # Seldon will handle volume mounting\n                        \"endpoint\":
+    {\n                            \"type\": \"REST\"\n                        }\n
+    \                   },\n                    \"componentSpecs\": [\n                        {\n
+    \                           \"spec\": {\n                                \"containers\":
     [\n                                    {\n                                        \"name\":
     \"classifier\",\n                                        \"image\": f\"ghcr.io/jtayl222/iris:{image_tag}\",\n
-    \                                       \"ports\": [\n                                            {\n
-    \                                               \"name\": \"http\",\n                                                \"containerPort\":
-    8080,\n                                                \"protocol\": \"TCP\"\n
-    \                                           },\n                                            {\n
-    \                                               \"name\": \"metrics\",\n                                                \"containerPort\":
-    6000,\n                                                \"protocol\": \"TCP\"\n
-    \                                           }\n                                        ],\n
     \                                       \"env\": [\n                                            {\n
-    \                                               \"name\": \"PREDICTIVE_UNIT_HTTP_SERVICE_PORT\",\n
-    \                                               \"value\": \"8080\"\n                                            },\n
-    \                                           {\n                                                \"name\":
-    \"MODEL_VERSION\",\n                                                \"value\":
-    model_version\n                                            }\n                                        ],\n
-    \                                       \"readinessProbe\": {\n                                            \"httpGet\":
-    {\n                                                \"path\": \"/health\",\n                                                \"port\":
-    8080,\n                                                \"scheme\": \"HTTP\"\n
-    \                                           },\n                                            \"initialDelaySeconds\":
-    10,\n                                            \"periodSeconds\": 5,\n                                            \"timeoutSeconds\":
-    1,\n                                            \"successThreshold\": 1,\n                                            \"failureThreshold\":
-    3\n                                        },\n                                        \"livenessProbe\":
-    {\n                                            \"httpGet\": {\n                                                \"path\":
-    \"/health\",\n                                                \"port\": 8080,\n
-    \                                               \"scheme\": \"HTTP\"\n                                            },\n
-    \                                           \"initialDelaySeconds\": 30,\n                                            \"periodSeconds\":
-    10,\n                                            \"timeoutSeconds\": 1,\n                                            \"successThreshold\":
-    1,\n                                            \"failureThreshold\": 3\n                                        },\n
-    \                                       \"resources\": {\n                                            \"requests\":
-    {\n                                                \"memory\": \"1Gi\",\n                                                \"cpu\":
-    \"500m\"\n                                            },\n                                            \"limits\":
+    \                                               \"name\": \"MODEL_VERSION\",\n
+    \                                               \"value\": model_version\n                                            }\n
+    \                                       ],\n                                        \"resources\":
+    {\n                                            \"requests\": {\n                                                \"memory\":
+    \"1Gi\",\n                                                \"cpu\": \"500m\"\n
+    \                                           },\n                                            \"limits\":
     {\n                                                \"memory\": \"2Gi\",\n                                                \"cpu\":
-    \"1\"\n                                            }\n                                        },\n
-    \                                       \"volumeMounts\": [\n                                            {\n
-    \                                               \"name\": \"model-storage\",\n
-    \                                               \"mountPath\": \"/mnt/models\"\n
-    \                                           }\n                                        ]\n
-    \                                   }\n                                ],\n                                \"volumes\":
-    [\n                                    {\n                                        \"name\":
-    \"model-storage\",\n                                        \"persistentVolumeClaim\":
-    {\n                                            \"claimName\": \"workdir\"\n                                        }\n
-    \                                   }\n                                ]\n                            }\n
-    \                       }\n                    ]\n                }\n            ]\n
-    \       }\n    }\n    \n    return seldon_deployment\n\ndef cleanup_old_deployments(current_version,
-    namespace=\"argowf\"):\n    \"\"\"Clean up old deployment versions (keep last
-    3)\"\"\"\n    try:\n        import subprocess\n        \n        # Get all SeldonDeployments
-    for this model\n        result = subprocess.run([\n            \"kubectl\", \"get\",
-    \"seldondeployments\", \"-n\", namespace,\n            \"-l\", \"app=iris\", \"-o\",
-    \"jsonpath={.items[*].metadata.name}\"\n        ], capture_output=True, text=True)\n
-    \       \n        if result.returncode == 0:\n            deployments = result.stdout.strip().split()\n
-    \           \n            # Sort deployments (assuming version-based naming)\n
-    \           deployments.sort()\n            \n            # Keep only the last
-    3 versions, delete older ones\n            if len(deployments) > 3:\n                old_deployments
-    = deployments[:-3]\n                for old_deployment in old_deployments:\n                    print(f\"\U0001F5D1️
+    \"1\"\n                                            }\n                                        }\n
+    \                                       # Let Seldon Core handle all the volume
+    mounts, probes, ports automatically\n                                    }\n                                ]\n
+    \                           }\n                        }\n                    ]\n
+    \               }\n            ]\n        }\n    }\n    \n    return seldon_deployment\n\ndef
+    cleanup_old_deployments(current_version, namespace=\"argowf\"):\n    \"\"\"Clean
+    up old deployment versions (keep last 3)\"\"\"\n    try:\n        import subprocess\n
+    \       \n        # Get all SeldonDeployments for this model\n        result =
+    subprocess.run([\n            \"kubectl\", \"get\", \"seldondeployments\", \"-n\",
+    namespace,\n            \"-l\", \"app=iris\", \"-o\", \"jsonpath={.items[*].metadata.name}\"\n
+    \       ], capture_output=True, text=True)\n        \n        if result.returncode
+    == 0:\n            deployments = result.stdout.strip().split()\n            \n
+    \           # Sort deployments (assuming version-based naming)\n            deployments.sort()\n
+    \           \n            # Keep only the last 3 versions, delete older ones\n
+    \           if len(deployments) > 3:\n                old_deployments = deployments[:-3]\n
+    \               for old_deployment in old_deployments:\n                    print(f\"\U0001F5D1️
     Cleaning up old deployment: {old_deployment}\")\n                    subprocess.run([\n
     \                       \"kubectl\", \"delete\", \"seldondeployment\", old_deployment,
     \"-n\", namespace\n                    ])\n                    \n    except Exception
@@ -138,6 +110,54 @@ data:
     Deployment failed: {result.stderr}\")\n            exit(1)\n            \n    except
     Exception as e:\n        print(f\"❌ Deployment failed: {str(e)}\")\n        exit(1)\n\nif
     __name__ == \"__main__\":\n    main()"
+  monitor_model.py: "#!/usr/bin/env python3\n\"\"\"\nModel Monitoring Script for MLOps
+    Pipeline\nExports metrics to Prometheus for Grafana visualization\n\"\"\"\n\nimport
+    os\nimport json\nimport time\nimport logging\nimport requests  # Use requests
+    instead of curl\n\n# Configure logging\nlogging.basicConfig(level=logging.INFO)\nlogger
+    = logging.getLogger(__name__)\n\ndef get_environment_vars():\n    \"\"\"Get environment
+    variables for monitoring\"\"\"\n    return {\n        'model_version': os.getenv('MODEL_VERSION',
+    'unknown'),\n        'environment': os.getenv('NAMESPACE', 'unknown'),\n        'stage':
+    os.getenv('PIPELINE_STAGE', 'unknown'),\n        'pushgateway_url': os.getenv('PUSHGATEWAY_URL',
+    'http://prometheus-pushgateway.monitoring.svc.cluster.local:9091')\n    }\n\ndef
+    load_validation_results():\n    \"\"\"Load model validation results\"\"\"\n    validation_path
+    = os.getenv('VALIDATION_RESULTS_PATH', '/workspace/validation_results.json')\n
+    \   \n    if not os.path.exists(validation_path):\n        logger.warning(f\"Validation
+    results not found at {validation_path}\")\n        return {}\n    \n    try:\n
+    \       with open(validation_path, 'r') as f:\n            return json.load(f)\n
+    \   except Exception as e:\n        logger.error(f\"Error loading validation results:
+    {e}\")\n        return {}\n\ndef export_metrics_to_pushgateway():\n    \"\"\"Export
+    metrics to Prometheus Pushgateway using requests\"\"\"\n    env_vars = get_environment_vars()\n
+    \   validation_results = load_validation_results()\n    \n    if not validation_results:\n
+    \       logger.warning(\"No validation results found, creating default metrics\")\n
+    \       validation_results = {\n            'accuracy': 0.0,\n            'precision':
+    0.0,\n            'recall': 0.0,\n            'f1_score': 0.0,\n            'validation_status':
+    'UNKNOWN'\n        }\n    \n    # Create metrics in Prometheus format\n    metrics_data
+    = f\"\"\"# MLOps Pipeline Metrics\n# TYPE iris_model_accuracy gauge\niris_model_accuracy{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('accuracy', 0)}\n\n# TYPE iris_model_precision gauge  \niris_model_precision{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('precision', 0)}\n\n# TYPE iris_model_recall gauge\niris_model_recall{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('recall', 0)}\n\n# TYPE iris_model_f1_score gauge\niris_model_f1_score{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {validation_results.get('f1_score', 0)}\n\n# TYPE iris_pipeline_stage_success
+    counter\niris_pipeline_stage_success{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\",stage=\"{env_vars['stage']}\"}}
+    1\n\n# TYPE iris_model_deployment_timestamp gauge\niris_model_deployment_timestamp{{version=\"{env_vars['model_version']}\",environment=\"{env_vars['environment']}\"}}
+    {time.time()}\n\"\"\"\n    \n    # Push metrics using requests with timeout\n
+    \   pushgateway_url = f\"{env_vars['pushgateway_url']}/metrics/job/iris-mlops-pipeline/version/{env_vars['model_version']}/environment/{env_vars['environment']}/stage/{env_vars['stage']}\"\n
+    \   \n    try:\n        logger.info(f\"Pushing metrics to {pushgateway_url}\")\n
+    \       response = requests.post(\n            pushgateway_url,\n            data=metrics_data,\n
+    \           headers={'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'},\n
+    \           timeout=10  # 10 second timeout\n        )\n        \n        if response.status_code
+    == 200:\n            logger.info(\"✅ Successfully pushed metrics to Pushgateway\")\n
+    \       else:\n            logger.warning(f\"⚠️ Failed to push metrics: {response.status_code}
+    - {response.text}\")\n            \n    except requests.exceptions.Timeout:\n
+    \       logger.error(\"❌ Timeout pushing metrics to Pushgateway\")\n    except
+    requests.exceptions.ConnectionError:\n        logger.error(\"❌ Connection error
+    to Pushgateway\")\n    except Exception as e:\n        logger.error(f\"❌ Error
+    pushing metrics: {e}\")\n\ndef main():\n    \"\"\"Main monitoring function\"\"\"\n
+    \   logger.info(\"\U0001F50D Starting MLOps monitoring...\")\n    \n    env_vars
+    = get_environment_vars()\n    logger.info(f\"Environment: {env_vars}\")\n    \n
+    \   # Load data\n    validation_results = load_validation_results()\n    logger.info(f\"Validation
+    Results: {validation_results}\")\n    \n    # Export metrics\n    export_metrics_to_pushgateway()\n
+    \   \n    logger.info(\"✅ Monitoring completed\")\n\nif __name__ == \"__main__\":\n
+    \   main()"
   requirements.txt: |
     scikit-learn==1.4.2
     mlflow==2.12.1
@@ -335,6 +355,160 @@ data:
     'w') as f:\n            f.write(fallback_version)\n        with open(os.getenv(\"VERSION_TAG_PATH\",
     \"/workspace/version_tag.txt\"), 'w') as f:\n            f.write(f\"v{fallback_version}\")\n
     \       \n        exit(1)\n\nif __name__ == \"__main__\":\n    main()"
+  workflow.yaml: "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata:\n  name:
+    iris-demo\nspec:\n  serviceAccountName: argo-workflow\n  entrypoint: iris-pipeline\n
+    \ # Add volumes at workflow level\n  volumes:\n  - name: src\n    configMap:\n
+    \     name: iris-src\n  volumeClaimTemplates:\n  - metadata:\n      name: workdir\n
+    \   spec:\n      storageClassName: nfs-shared\n      accessModes: [ReadWriteMany]\n
+    \     resources:\n        requests:\n          storage: 1Gi\n  templates:\n  -
+    name: iris-pipeline\n    dag:\n      tasks:\n      - name: train\n        template:
+    train\n      \n      - name: validate\n        template: model-validation\n        dependencies:
+    [train]\n      \n      - name: semantic-versioning\n        template: semantic-versioning\n
+    \       dependencies: [validate]  # Move this to depend on validate directly\n
+    \   \n      - name: monitor-validate  # Move monitoring after versioning\n        template:
+    monitor\n        arguments:\n          parameters:\n          - name: model-version\n
+    \           value: \"{{tasks.semantic-versioning.outputs.parameters.model-version}}\"\n
+    \         - name: pipeline-stage\n            value: \"validate\"\n        dependencies:
+    [semantic-versioning]\n      \n      - name: kaniko\n        template: kaniko\n
+    \       arguments:\n          parameters:\n          - name: version-tag\n            value:
+    \"{{tasks.semantic-versioning.outputs.parameters.version-tag}}\"\n        dependencies:
+    [monitor-validate]  # Update dependency\n    \n      - name: deploy\n        template:
+    deploy\n        arguments:\n          parameters:\n          - name: image-tag\n
+    \           value: \"{{tasks.semantic-versioning.outputs.parameters.version-tag}}\"\n
+    \         - name: model-version\n            value: \"{{tasks.semantic-versioning.outputs.parameters.model-version}}\"\n
+    \       dependencies: [kaniko]\n      \n      - name: monitor-deploy\n        template:
+    monitor\n        arguments:\n          parameters:\n          - name: model-version\n
+    \           value: \"{{tasks.semantic-versioning.outputs.parameters.model-version}}\"\n
+    \         - name: pipeline-stage\n            value: \"deploy\"\n        dependencies:
+    [deploy]\n\n  - name: train\n    container:\n      image: jupyter/scipy-notebook:python-3.11\n
+    \     securityContext:\n        runAsUser: 0\n        runAsGroup: 0\n      resources:\n
+    \       requests:\n          memory: \"2Gi\"\n          cpu: \"1\"\n        limits:\n
+    \         memory: \"4Gi\"\n          cpu: \"2\"\n      command: [\"/bin/bash\",
+    \"-c\"]\n      args:\n        - |\n          # Fix permissions on the output directory\n
+    \         set -x\n          mount\n          df -h /output\n          chown -R
+    1000:100 /output\n          \n          # Switch to jovyan user with proper environment\n
+    \         su jovyan -c \"\n          source /opt/conda/etc/profile.d/conda.sh\n
+    \         conda activate base\n          pip uninstall -y backports.tarfile\n
+    \         pip install backports.tarfile\n          pip install setuptools==78.1.0
+    boto3==1.37.34\n          cp /src/requirements.txt /tmp/requirements.txt\n          pip
+    install -r /tmp/requirements.txt\n          pip install scikit-learn==1.5.1 numpy
+    pandas\n          python /src/train.py\n          \"\n      volumeMounts:\n      -
+    name: workdir\n        mountPath: /output\n      - name: src\n        mountPath:
+    /src\n      env:\n      - name: MLFLOW_TRACKING_URI\n        value: \"http://mlflow.mlflow.svc.cluster.local:5000\"\n
+    \     - name: GIT_PYTHON_REFRESH\n        value: \"quiet\"\n      envFrom:\n      -
+    secretRef:\n          name: minio-credentials-wf\n    volumes:\n    - name: src\n
+    \     configMap:\n        name: iris-src\n\n  - name: kaniko\n    inputs:\n      parameters:\n
+    \     - name: version-tag\n    outputs:\n      parameters:\n      - name: image-tag\n
+    \       valueFrom:\n          path: /workspace/image_tag.txt\n    container:\n
+    \     image: gcr.io/kaniko-project/executor:v1.23.0\n      resources:\n        requests:\n
+    \         memory: \"2Gi\"\n          cpu: \"1\"\n        limits:\n          memory:
+    \"4Gi\"\n          cpu: \"2\"\n      args:\n      - --context=/workspace\n      -
+    --dockerfile=/workspace/Dockerfile\n      - --destination=ghcr.io/jtayl222/iris:{{inputs.parameters.version-tag}}\n
+    \     - --destination=ghcr.io/jtayl222/iris:latest  # Always tag latest too\n
+    \     - --push-retry=5\n      - --verbosity=debug\n      volumeMounts:\n      -
+    name: workdir\n        mountPath: /workspace\n      - name: src\n        mountPath:
+    /src\n      - name: workdir\n        mountPath: /output\n      - name: docker-config\n
+    \       mountPath: /kaniko/.docker\n        readOnly: true\n      env:\n      -
+    name: DOCKER_CONFIG\n        value: /kaniko/.docker\n    volumes:\n    - name:
+    docker-config\n      secret:\n        secretName: ghcr-secret\n        items:\n
+    \       - key: .dockerconfigjson\n          path: config.json\n    initContainers:\n
+    \   - name: prepare-workspace\n      image: busybox\n      resources:\n        requests:\n
+    \         memory: \"2Gi\"\n          cpu: \"1\"\n        limits:\n          memory:
+    \"4Gi\"\n          cpu: \"2\"\n      command: [\"/bin/sh\", \"-c\"]\n      args:\n
+    \     - |\n        # Copy Dockerfile and model to workspace\n        cp /src/Dockerfile
+    /workspace/\n        cp /src/requirements.txt /workspace/\n        \n        #
+    Debug output to check if model exists in output directory\n        echo \"Listing
+    output directory:\"\n        ls -la /output\n        echo \"Listing output/model
+    directory:\"\n        ls -la /tmp/model || echo \"No model directory in output\"\n
+    \       \n        # Make sure model directory exists in workspace\n        mkdir
+    -p /workspace/model\n        \n        # Copy model from output volume\n        if
+    [ -f \"/output/model/model.pkl\" ]; then\n          cp /output/model/model.pkl
+    /workspace/model/\n        else\n          echo \"Model file not found in expected
+    locations\"\n          find /output -name \"model.pkl\" -type f\n          exit
+    1\n        fi\n        \n        cp /src/serve.py /workspace/\n        \n        #
+    Use version tag from versioning step\n        TAG=\"{{inputs.parameters.version-tag}}\"\n
+    \       echo \"Using version tag: $TAG\"\n        \n        # Save tag for output
+    parameter\n        echo \"$TAG\" > /workspace/image_tag.txt\n        \n        echo
+    \"Final workspace contents:\"\n        ls -la /workspace\n        ls -la /workspace/model
+    || echo \"No model directory in workspace\"\n      volumeMounts:\n      - name:
+    workdir\n        mountPath: /workspace\n      - name: src\n        mountPath:
+    /src\n      - name: workdir\n        mountPath: /output\n\n  - name: model-validation\n
+    \   outputs:\n      parameters:\n      - name: validation-status\n        valueFrom:\n
+    \         path: /workspace/validation_results.json  # Changed from /output\n    container:\n
+    \     image: python:3.12-slim\n      resources:\n        requests:\n          memory:
+    \"2Gi\"\n          cpu: \"1\"\n        limits:\n          memory: \"4Gi\"\n          cpu:
+    \"2\"\n      volumeMounts:\n      - name: workdir\n        mountPath: /workspace
+    \ # Only mount workdir once\n      - name: src\n        mountPath: /src\n      command:
+    [sh, -c]\n      args:\n      - |\n        cd /workspace\n        \n        # Install
+    dependencies\n        pip install scikit-learn==1.5.1 numpy pandas\n        \n
+    \       # Debug: Check what files exist\n        echo \"Files in /workspace:\"\n
+    \       ls -la /workspace/\n        \n        # Check if model exists in model
+    subdirectory (from train step)\n        if [ -f \"/workspace/model/model.pkl\"
+    ]; then\n          echo \"✅ Model found at /workspace/model/model.pkl\"\n          export
+    MODEL_PATH=/workspace/model/model.pkl\n        elif [ -f \"/workspace/model.pkl\"
+    ]; then\n          echo \"✅ Model found at /workspace/model.pkl\"\n          export
+    MODEL_PATH=/workspace/model.pkl\n        else\n          echo \"❌ Model not found\"\n
+    \         echo \"Available files:\"\n          find /workspace -name \"*.pkl\"
+    -type f\n          exit 1\n        fi\n        \n        # Copy and run validation
+    script\n        cp /src/test_model.py .\n        \n        # Set environment variables
+    for validation script\n        export OUTPUT_PATH=/workspace/validation_results.json\n
+    \       \n        python test_model.py\n        \n        echo \"Model validation
+    completed\"\n\n  - name: semantic-versioning\n    outputs:\n      parameters:\n
+    \     - name: model-version\n        valueFrom:\n          path: /workspace/model_version.txt\n
+    \     - name: version-tag\n        valueFrom:\n          path: /workspace/version_tag.txt\n
+    \   container:\n      image: python:3.12-slim\n      resources:\n        requests:\n
+    \         memory: \"2Gi\"\n          cpu: \"1\"\n        limits:\n          memory:
+    \"4Gi\"\n          cpu: \"2\"\n      volumeMounts:\n      - name: workdir\n        mountPath:
+    /workspace\n      - name: src\n        mountPath: /src\n      command: [sh, -c]\n
+    \     args:\n      - |\n        cd /workspace\n        \n        # Install dependencies\n
+    \       pip install requests semver\n        \n        # Copy versioning script\n
+    \       cp /src/version_model.py .\n        \n        # Set environment variables\n
+    \       export VALIDATION_RESULTS_PATH=/workspace/validation_results.json\n        export
+    OUTPUT_PATH=/workspace/model_version.txt\n        export VERSION_TAG_PATH=/workspace/version_tag.txt\n
+    \       \n        # Run versioning logic\n        python version_model.py\n        \n
+    \       echo \"Model versioning completed\"\n        \n        # Show results\n
+    \       echo \"Model Version: $(cat /workspace/model_version.txt)\"\n        echo
+    \"Version Tag: $(cat /workspace/version_tag.txt)\"\n\n  # Alternative approach
+    using a container with both tools:\n\n  - name: deploy\n    inputs:\n      parameters:\n
+    \     - name: image-tag\n      - name: model-version\n    container:\n      image:
+    python:3.12-slim\n      resources:\n        requests:\n          memory: \"2Gi\"\n
+    \         cpu: \"1\"\n        limits:\n          memory: \"4Gi\"\n          cpu:
+    \"2\"\n      command: [sh, -c]\n      args:\n      - |\n        set -e  # Exit
+    on any error\n        \n        # Install system dependencies\n        apt-get
+    update && apt-get install -y curl\n        \n        # Install kubectl\n        echo
+    \"\U0001F4E6 Installing kubectl...\"\n        KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)\n
+    \       curl -LO \"https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl\"\n
+    \       chmod +x kubectl\n        mv kubectl /usr/local/bin/\n        \n        #
+    Install Python packages\n        pip install pyyaml\n        \n        # Copy
+    deployment script\n        cp /src/deploy_model.py /workspace/\n        \n        cd
+    /workspace\n        \n        # Set environment variables\n        export IMAGE_TAG={{inputs.parameters.image-tag}}\n
+    \       export MODEL_VERSION={{inputs.parameters.model-version}}\n        export
+    NAMESPACE=argowf\n        export MODEL_NAME=iris\n        \n        # Verify kubectl
+    works\n        kubectl version --client\n        \n        # Debug: Show environment\n
+    \       echo \"\U0001F50D Environment:\"\n        echo \"IMAGE_TAG: $IMAGE_TAG\"\n
+    \       echo \"MODEL_VERSION: $MODEL_VERSION\"\n        echo \"NAMESPACE: $NAMESPACE\"\n
+    \       \n        # Run deployment\n        echo \"\U0001F680 Running deployment
+    script...\"\n        python deploy_model.py\n        \n        echo \"✅ Deployment
+    completed successfully\"\n      volumeMounts:\n      - name: workdir\n        mountPath:
+    /workspace\n      - name: src\n        mountPath: /src\n\n  - name: monitor\n
+    \   inputs:\n      parameters:\n      - name: model-version\n      - name: pipeline-stage\n
+    \   container:\n      image: python:3.12-slim\n      resources:\n        requests:\n
+    \         memory: \"2Gi\"\n          cpu: \"1\"\n        limits:\n          memory:
+    \"4Gi\"\n          cpu: \"2\"\n      command: [sh, -c]\n      args:\n      - |\n
+    \       set -e\n        \n        echo \"\U0001F4CA Starting monitoring for stage
+    {{inputs.parameters.pipeline-stage}}...\"\n        \n        # Install monitoring
+    dependencies\n        pip install prometheus-client requests mlflow\n        \n
+    \       # Copy monitoring script\n        cp /src/monitor_model.py /workspace/\n
+    \       \n        cd /workspace\n        \n        # Set environment variables\n
+    \       export MODEL_VERSION={{inputs.parameters.model-version}}\n        export
+    PIPELINE_STAGE={{inputs.parameters.pipeline-stage}}\n        export NAMESPACE=argowf\n
+    \       export PUSHGATEWAY_URL=http://prometheus-pushgateway.monitoring.svc.cluster.local:9091\n
+    \       export VALIDATION_RESULTS_PATH=/workspace/validation_results.json\n        export
+    PIPELINE_METRICS_PATH=/workspace/pipeline_metrics.json\n        \n        # Run
+    monitoring\n        python monitor_model.py\n        \n        echo \"✅ Monitoring
+    completed for {{inputs.parameters.pipeline-stage}}\"\n      volumeMounts:\n      -
+    name: workdir\n        mountPath: /workspace\n      - name: src\n        mountPath:
+    /src\n\n\n"
 kind: ConfigMap
 metadata:
   name: iris-src
