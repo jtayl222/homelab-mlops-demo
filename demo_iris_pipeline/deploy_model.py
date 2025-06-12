@@ -55,11 +55,9 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                     "graph": {
                         "name": "classifier",
                         "implementation": "SKLEARN_SERVER",
-                        "modelUri": "pvc://workdir/model",
+                        "modelUri": "pvc://workdir/model",  # Seldon will handle volume mounting
                         "endpoint": {
-                            "type": "REST",
-                            "service_host": "localhost",
-                            "service_port": 8080
+                            "type": "REST"
                         }
                     },
                     "componentSpecs": [
@@ -69,52 +67,12 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                                     {
                                         "name": "classifier",
                                         "image": f"ghcr.io/jtayl222/iris:{image_tag}",
-                                        "ports": [
-                                            {
-                                                "name": "http",
-                                                "containerPort": 8080,
-                                                "protocol": "TCP"
-                                            },
-                                            {
-                                                "name": "metrics",
-                                                "containerPort": 6000,
-                                                "protocol": "TCP"
-                                            }
-                                        ],
                                         "env": [
-                                            {
-                                                "name": "PREDICTIVE_UNIT_HTTP_SERVICE_PORT",
-                                                "value": "8080"
-                                            },
                                             {
                                                 "name": "MODEL_VERSION",
                                                 "value": model_version
                                             }
                                         ],
-                                        "readinessProbe": {
-                                            "httpGet": {
-                                                "path": "/health",
-                                                "port": 8080,
-                                                "scheme": "HTTP"
-                                            },
-                                            "initialDelaySeconds": 10,
-                                            "periodSeconds": 5,
-                                            "timeoutSeconds": 1,
-                                            "successThreshold": 1,
-                                            "failureThreshold": 3
-                                        },
-                                        "livenessProbe": {
-                                            "httpGet": {
-                                                "path": "/health",
-                                                "port": 8080,
-                                                "scheme": "HTTP"
-                                            },
-                                            "initialDelaySeconds": 30,
-                                            "periodSeconds": 10,
-                                            "timeoutSeconds": 1,
-                                            "successThreshold": 1,
-                                            "failureThreshold": 3
-                                        },
                                         "resources": {
                                             "requests": {
                                                 "memory": "1Gi",
@@ -124,21 +82,8 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                                                 "memory": "2Gi",
                                                 "cpu": "1"
                                             }
-                                        },
-                                        "volumeMounts": [
-                                            {
-                                                "name": "model-storage",
-                                                "mountPath": "/mnt/model"
-                                            }
-                                        ]
-                                    }
-                                ],
-                                "volumes": [
-                                    {
-                                        "name": "model-storage",
-                                        "persistentVolumeClaim": {
-                                            "claimName": "workdir"
                                         }
+                                        # Let Seldon Core handle all the volume mounts, probes, ports automatically
                                     }
                                 ]
                             }

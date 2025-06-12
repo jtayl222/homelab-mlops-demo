@@ -235,27 +235,27 @@ argo logs iris-demo -n argowf --container deploy
 kubectl get seldondeployments -n argowf
 
 # Get detailed status
-kubectl describe seldondeployment iris -n argowf
+kubectl describe seldondeployment iris-0-2-0 -n argowf
 
 # Check if pods are running
-kubectl get pods -n argowf -l seldon-deployment-id=iris
+kubectl get pods -n argowf -l seldon-deployment-id=iris-0-2-0
 ```
 
 **Successful deployment indicators:**
 ```bash
 $ kubectl get seldondeployments -n argowf
-NAME   AGE   READY
-iris   2m    True
+NAME         AGE   READY
+iris-0-2-0   5m    True
 
-$ kubectl get pods -n argowf -l seldon-deployment-id=iris
-NAME                               READY   STATUS    RESTARTS   AGE
-iris-default-0-classifier-xyz123   2/2     Running   0          2m
+$ kubectl get pods -n argowf -l seldon-deployment-id=iris-0-2-0
+NAME                                          READY   STATUS    RESTARTS   AGE
+iris-0-2-0-default-0-classifier-xyz123       2/2     Running   0          5m
 ```
 
 ### Test Model Endpoint
 ```bash
 # Port forward to test locally
-kubectl port-forward -n argowf svc/iris-default 8080:8080 &
+kubectl port-forward -n argowf svc/iris-0-2-0-default-classifier 8080:8080 &
 
 # Send test prediction request
 curl -X POST http://localhost:8080/api/v1.0/predictions \
@@ -272,8 +272,24 @@ curl -X POST http://localhost:8080/api/v1.0/predictions \
     "names": ["t:0"],
     "ndarray": [0]
   },
-  "meta": {}
+  "meta": {
+    "requestPath": {
+      "classifier": "ghcr.io/jtayl222/iris:v0.2.0"
+    }
+  }
 }
+```
+
+### Model Deployment Details
+```bash
+# Check deployment annotations (your pipeline metadata)
+kubectl get seldondeployment iris-0-2-0 -n argowf -o yaml | grep -A 10 annotations
+
+# Shows:
+# model.accuracy: "1.0"
+# model.version: "0.2.0" 
+# validation.status: "PASSED"
+# deployment.timestamp: "2025-06-12T12:26:58.864009Z"
 ```
 
 ## 6. Storage and Artifacts

@@ -88,7 +88,7 @@ echo "  GITHUB_EMAIL: $GITHUB_EMAIL"
 if [[ "$NAMESPACE" == "argowf" ]]; then
     ENV_TYPE="production"
     ARGOCD_APP="homelab-mlops-demo"
-    CONFIGMAP_SCRIPT="./update-configmap.sh"
+    CONFIGMAP_SCRIPT="./scripts/update-configmap.sh"
     CONFIGMAP_FILE="demo_iris_pipeline/iris-src-configmap.yaml"
     APP_MANIFEST="applications/demo-iris-pipeline-app.yaml"
 else
@@ -143,7 +143,7 @@ deploy() {
     echo "4. Regenerating ConfigMap for $NAMESPACE..."
     if [[ "$NAMESPACE" == "argowf" ]]; then
         # Production environment
-        ./update-configmap.sh
+        ./scripts/update-configmap.sh
         kubectl apply -f demo_iris_pipeline/iris-src-configmap.yaml
     else
         # Development environment

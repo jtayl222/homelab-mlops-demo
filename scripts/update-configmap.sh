@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-NAMESPACE=${1:-argowf-dev}
+NAMESPACE=${1:-argowf}
 
 echo "📋 Updating ConfigMap iris-src in namespace: $NAMESPACE"
 

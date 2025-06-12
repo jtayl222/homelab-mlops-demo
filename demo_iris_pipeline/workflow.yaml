@@ -370,7 +370,7 @@ spec:
         # Set environment variables
         export IMAGE_TAG={{inputs.parameters.image-tag}}
         export MODEL_VERSION={{inputs.parameters.model-version}}
-        export NAMESPACE=argowf-dev
+        export NAMESPACE=argowf
         export MODEL_NAME=iris
         
         # Verify kubectl works
@@ -425,7 +425,7 @@ spec:
         # Set environment variables
         export MODEL_VERSION={{inputs.parameters.model-version}}
         export PIPELINE_STAGE={{inputs.parameters.pipeline-stage}}
-        export NAMESPACE=argowf-dev
+        export NAMESPACE=argowf
         export PUSHGATEWAY_URL=http://prometheus-pushgateway.monitoring.svc.cluster.local:9091
         export VALIDATION_RESULTS_PATH=/workspace/validation_results.json
         export PIPELINE_METRICS_PATH=/workspace/pipeline_metrics.json
