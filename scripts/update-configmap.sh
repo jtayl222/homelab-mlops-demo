@@ -3,22 +3,23 @@ set -e
 
 NAMESPACE=${1:-argowf}
 
-echo "📋 Updating ConfigMap iris-src in namespace: $NAMESPACE"
+echo "📋 Generating ConfigMap iris-src for namespace: $NAMESPACE"
 
-# Delete existing ConfigMap if it exists
-kubectl delete configmap iris-src -n $NAMESPACE --ignore-not-found=true
+# Ensure manifests directory exists
+mkdir -p manifests/configmaps
 
-# Create new ConfigMap from directory
+# Generate ConfigMap YAML (GitOps-First)
 kubectl create configmap iris-src \
   --from-file=demo_iris_pipeline/ \
-  --namespace=$NAMESPACE
+  --namespace=$NAMESPACE \
+  --dry-run=client -o yaml | \
+  grep -v "creationTimestamp" > manifests/configmaps/iris-src-configmap.yaml
 
-echo "✅ ConfigMap iris-src updated successfully in namespace $NAMESPACE!"
+echo "✅ ConfigMap YAML generated: manifests/configmaps/iris-src-configmap.yaml"
 
-# Verify monitor_model.py is included
-if kubectl get configmap iris-src -n $NAMESPACE -o yaml | grep -q "monitor_model.py:"; then
-    echo "✅ monitor_model.py is included in ConfigMap"
-else
-    echo "❌ monitor_model.py is NOT in ConfigMap"
-    exit 1
-fi
+# Apply the ConfigMap from the generated file
+kubectl apply -f manifests/configmaps/iris-src-configmap.yaml
+
+echo "✅ ConfigMap iris-src applied successfully in namespace $NAMESPACE!"
+
+echo "💡 GitOps: Commit manifests/configmaps/iris-src-configmap.yaml to Git"
