@@ -1,0 +1,22 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: workflow-role
+  namespace: argowf
+rules:
+# Core Kubernetes resources
+- apiGroups: [""]
+  resources: ["pods", "pods/exec", "persistentvolumeclaims", "events", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Argo Workflows resources
+- apiGroups: ["argoproj.io"]
+  resources: ["workflows", "workflows/finalizers", "workflowtaskresults", "workflowtaskresults/finalizers"]
+  verbs: ["get", "list", "watch", "update", "patch", "delete", "create"]
+# Seldon Core resources
+- apiGroups: ["machinelearning.seldon.io"]
+  resources: ["seldondeployments", "seldondeployments/finalizers"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Apps resources
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
