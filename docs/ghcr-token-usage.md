@@ -63,7 +63,7 @@ export GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 export GITHUB_EMAIL="your-email@example.com"
 
 # Create the secret
-kubectl create secret docker-registry ghcr-secret \
+kubectl create secret docker-registry ghcr-credentials \
   --docker-server=ghcr.io \
   --docker-username="$GITHUB_USERNAME" \
   --docker-password="$GITHUB_TOKEN" \
@@ -73,11 +73,11 @@ kubectl create secret docker-registry ghcr-secret \
 
 ### Method 2: Environment Variables with Script
 
-Create a script `create-ghcr-secret.sh`:
+Create a script `create-ghcr-credentials.sh`:
 
 ```bash
 #!/bin/bash
-# create-ghcr-secret.sh
+# create-ghcr-credentials.sh
 
 # Check if environment variables are set
 if [[ -z "$GITHUB_USERNAME" || -z "$GITHUB_TOKEN" || -z "$GITHUB_EMAIL" ]]; then
@@ -89,10 +89,10 @@ if [[ -z "$GITHUB_USERNAME" || -z "$GITHUB_TOKEN" || -z "$GITHUB_EMAIL" ]]; then
 fi
 
 # Delete existing secret if it exists
-kubectl delete secret ghcr-secret -n argowf 2>/dev/null || echo "No existing secret found"
+kubectl delete secret ghcr-credentials -n argowf 2>/dev/null || echo "No existing secret found"
 
 # Create new secret
-kubectl create secret docker-registry ghcr-secret \
+kubectl create secret docker-registry ghcr-credentials \
   --docker-server=ghcr.io \
   --docker-username="$GITHUB_USERNAME" \
   --docker-password="$GITHUB_TOKEN" \
@@ -100,8 +100,8 @@ kubectl create secret docker-registry ghcr-secret \
   -n argowf
 
 # Verify secret creation
-if kubectl get secret ghcr-secret -n argowf >/dev/null 2>&1; then
-    echo "✅ Secret 'ghcr-secret' created successfully in namespace 'argowf'"
+if kubectl get secret ghcr-credentials -n argowf >/dev/null 2>&1; then
+    echo "✅ Secret 'ghcr-credentials' created successfully in namespace 'argowf'"
 else
     echo "❌ Failed to create secret"
     exit 1
@@ -110,7 +110,7 @@ fi
 
 Make it executable and run:
 ```bash
-chmod +x create-ghcr-secret.sh
+chmod +x create-ghcr-credentials.sh
 
 # Set environment variables
 export GITHUB_USERNAME="jtayl222"
@@ -118,7 +118,7 @@ export GITHUB_TOKEN="ghp_your_actual_token_here"
 export GITHUB_EMAIL="your-email@example.com"
 
 # Run the script
-./create-ghcr-secret.sh
+./create-ghcr-credentials.sh
 ```
 
 ### Method 3: YAML Manifest (Not Recommended - Security Risk)
@@ -126,11 +126,11 @@ export GITHUB_EMAIL="your-email@example.com"
 **⚠️ WARNING: This method stores credentials in plain text. Only use for testing.**
 
 ```yaml
-# ghcr-secret.yaml (DO NOT COMMIT TO GIT)
+# ghcr-credentials.yaml (DO NOT COMMIT TO GIT)
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ghcr-secret
+  name: ghcr-credentials
   namespace: argowf
 type: kubernetes.io/dockerconfigjson
 data:
@@ -157,10 +157,10 @@ docker logout ghcr.io
 
 ```bash
 # Check if secret exists
-kubectl get secret ghcr-secret -n argowf
+kubectl get secret ghcr-credentials -n argowf
 
 # Decode and inspect the secret (for debugging)
-kubectl get secret ghcr-secret -n argowf -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq .
+kubectl get secret ghcr-credentials -n argowf -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq .
 
 # Expected output should show:
 # {
@@ -189,7 +189,7 @@ metadata:
   namespace: argowf
 spec:
   imagePullSecrets:
-  - name: ghcr-secret
+  - name: ghcr-credentials
   containers:
   - name: test
     image: ghcr.io/jtayl222/iris:latest
@@ -253,21 +253,21 @@ failed to resolve reference "ghcr.io/username/package:tag": not found
 **Solutions**:
 1. **Check secret format**:
    ```bash
-   kubectl get secret ghcr-secret -n argowf -o yaml
+   kubectl get secret ghcr-credentials -n argowf -o yaml
    ```
 
 2. **Verify imagePullSecrets in deployment**:
    ```yaml
    spec:
      imagePullSecrets:
-     - name: ghcr-secret  # Must match secret name exactly
+     - name: ghcr-credentials  # Must match secret name exactly
    ```
 
 3. **Check namespace**: Secret and pod must be in same namespace
 
 4. **Recreate secret with correct format**:
    ```bash
-   kubectl delete secret ghcr-secret -n argowf
+   kubectl delete secret ghcr-credentials -n argowf
    # Use Method 1 above to recreate
    ```
 
@@ -346,7 +346,7 @@ spec:
     componentSpecs:
     - spec:
         imagePullSecrets:
-        - name: ghcr-secret  # Add this line
+        - name: ghcr-credentials  # Add this line
         containers:
         - name: classifier
           image: ghcr.io/jtayl222/iris:latest

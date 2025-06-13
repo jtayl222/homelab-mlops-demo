@@ -129,7 +129,7 @@ cleanup() {
 # Deploy function
 deploy() {
     echo "3. Recreating registry secret in $NAMESPACE..."
-    kubectl create secret docker-registry ghcr-secret \
+    kubectl create secret docker-registry ghcr-credentials \
       --docker-server=ghcr.io \
       --docker-username="$GITHUB_USERNAME" \
       --docker-password="$GITHUB_TOKEN" \

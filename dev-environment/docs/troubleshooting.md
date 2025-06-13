@@ -904,7 +904,7 @@ volumeMounts:
 volumes:
 - name: docker-config
   secret:
-    secretName: ghcr-secret
+    secretName: ghcr-credentials
     items:
     - key: .dockerconfigjson
       path: config.json

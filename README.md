@@ -153,7 +153,7 @@ argo submit manifests/workflows/iris-workflow.yaml -n argowf --watch
 
 ### Registry Authentication (for private repos)
 ```bash
-kubectl create secret docker-registry ghcr-secret \
+kubectl create secret docker-registry ghcr-credentials \
   --docker-server=ghcr.io \
   --docker-username=<username> \
   --docker-password=<token> \

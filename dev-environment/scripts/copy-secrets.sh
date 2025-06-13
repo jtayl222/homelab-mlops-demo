@@ -30,6 +30,6 @@ copy_secret() {
 
 # Copy required secrets
 copy_secret "minio-credentials-wf" $SOURCE_NAMESPACE $TARGET_NAMESPACE
-copy_secret "ghcr-secret" $SOURCE_NAMESPACE $TARGET_NAMESPACE
+copy_secret "ghcr-credentials" $SOURCE_NAMESPACE $TARGET_NAMESPACE
 
 echo "✅ Secret copying complete!"
