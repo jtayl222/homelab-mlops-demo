@@ -8,9 +8,9 @@ echo "📋 Generating ConfigMap iris-src for namespace: $NAMESPACE"
 # Ensure manifests directory exists
 mkdir -p manifests/configmaps
 
-# Generate ConfigMap YAML (GitOps-First)
+# Generate ConfigMap YAML (GitOps-First) - source code only
 kubectl create configmap iris-src \
-  --from-file=demo_iris_pipeline/ \
+  --from-file=demo_iris_pipeline/src/ \
   --namespace=$NAMESPACE \
   --dry-run=client -o yaml | \
   grep -v "creationTimestamp" > manifests/configmaps/iris-src-configmap.yaml
