@@ -1,0 +1,96 @@
+# manifests/base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - workflows/iris-workflow.yaml
+  - rbac/base/
+  - configmaps/app-config.yaml
+  - configmaps/iris-src-configmap.yaml
+  - configmaps/serve-template-configmap.yaml
+  - secrets/rclone-config-secret.yaml
+
+patches:
+  - path: patches/minio-credentials-patch.yaml
+    target:
+      kind: Secret
+      name: minio-credentials-wf
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: iris-demo
+      app.kubernetes.io/part-of: homelab-mlops
+
+replacements:
+  # Replace MODEL_SERVING_PORT in serve.py
+  - source:
+      kind: ConfigMap
+      name: app-config
+      fieldPath: data.MODEL_SERVING_PORT
+    targets:
+      - select:
+          kind: ConfigMap
+          name: serve-template
+        fieldPaths:
+          - data.[serve.py]
+        options:
+          delimiter: 'MODEL_SERVING_PORT'
+          
+  # Replace MODEL_SERVING_PORT in Dockerfile
+  - source:
+      kind: ConfigMap
+      name: app-config
+      fieldPath: data.MODEL_SERVING_PORT
+    targets:
+      - select:
+          kind: ConfigMap
+          name: iris-src-configmap
+        fieldPaths:
+          - data.[Dockerfile]
+        options:
+          delimiter: 'EXPOSE '
+          
+  # Replace MINIO_HOST in rclone config
+  - source:
+      kind: ConfigMap
+      name: app-config
+      fieldPath: data.MINIO_HOST
+    targets:
+      - select:
+          kind: Secret
+          name: iris-rclone-config
+        fieldPaths:
+          - stringData.RCLONE_CONFIG_S3_ENDPOINT
+        options:
+          delimiter: '//'
+          index: 1
+          
+  # Replace MINIO_PORT in credentials patch
+  - source:
+      kind: ConfigMap
+      name: app-config
+      fieldPath: data.MINIO_PORT
+    targets:
+      - select:
+          kind: Secret
+          name: minio-credentials-wf
+        fieldPaths:
+          - stringData.RCLONE_CONFIG_S3_ENDPOINT
+        options:
+          delimiter: ':'
+          index: 2
+          
+  # Replace MODEL_SERVING_PORT in the workflow
+  - source:
+      kind: ConfigMap
+      name: app-config
+      fieldPath: data.MODEL_SERVING_PORT
+    targets:
+      - select:
+          kind: ConfigMap
+          name: iris-src
+        fieldPaths:
+          - data.[serve.py]
+        options:
+          delimiter: 'MODEL_SERVING_PORT", "'
+          index: 1

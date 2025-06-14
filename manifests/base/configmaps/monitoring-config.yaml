@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: argowf-dev
+
+namePrefix: dev-
+
+patches:
+  - path: app-config-patch.yaml
+    target:
+      kind: ConfigMap
+      name: app-config
+  - path: resource-limits-patch.yaml
+    target:
+      kind: Workflow
+      name: iris-demo
+
+labels:
+  - pairs:
+      environment: development
+
+# Development-specific image tags
+images:
+  - name: ghcr.io/jtayl222/iris
+    newTag: dev-latest

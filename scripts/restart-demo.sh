@@ -31,6 +31,32 @@ usage() {
     exit 1
 }
 
+# Function to get port configuration for namespace
+get_port_for_namespace() {
+    local namespace=$1
+    local environment="production"
+    
+    # Determine environment based on namespace
+    if [[ "$namespace" != "argowf" ]]; then
+        environment="development"
+    fi
+    
+    # Get port from kustomize config
+    local port=$(kubectl kustomize manifests/overlays/$environment 2>/dev/null | \
+        yq eval 'select(.kind == "ConfigMap" and (.metadata.name | test(".*app-config"))) | .data.MODEL_SERVING_PORT' - 2>/dev/null)
+    
+    # Default fallback
+    if [[ -z "$port" || "$port" == "null" ]]; then
+        if [[ "$environment" == "development" ]]; then
+            port="9001"
+        else
+            port="9000"
+        fi
+    fi
+    
+    echo "$port"
+}
+
 # Show help if requested
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     usage
@@ -136,19 +162,16 @@ deploy() {
       --docker-email="$GITHUB_EMAIL" \
       -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
-    echo "4. Regenerating ConfigMap for $NAMESPACE..."
+    echo "4. Deploying with kustomize for $NAMESPACE..."
     if [[ "$NAMESPACE" == "argowf" ]]; then
         # Production environment
-        ./scripts/update-configmap.sh
+        kubectl apply -k manifests/overlays/production
     else
         # Development environment
-        ./scripts/update-configmap.sh "$NAMESPACE"
+        kubectl apply -k manifests/overlays/development
     fi
 
-    echo "5. Applying updated workflow definition..."
-    kubectl apply -f demo_iris_pipeline/workflow.yaml -n "$NAMESPACE" 2>/dev/null || echo "Workflow template applied globally"
-
-    echo "6. Creating/updating ArgoCD application..."
+    echo "5. Creating/updating ArgoCD application..."
     if [[ -f "$APP_MANIFEST" ]]; then
         kubectl apply -f "$APP_MANIFEST"
     else
@@ -157,11 +180,11 @@ deploy() {
         echo "  ./scripts/create-argocd-app.sh $NAMESPACE"
     fi
 
-    echo "7. Syncing ArgoCD..."
+    echo "6. Syncing ArgoCD..."
     sleep 5  # Give ArgoCD time to detect the app
     argocd app sync "$ARGOCD_APP" || echo "⚠️  ArgoCD sync failed - app may not exist yet"
 
-    echo "8. Checking workflow status in $NAMESPACE..."
+    echo "7. Checking workflow status in $NAMESPACE..."
     # Check if ArgoCD already created the workflow
     if kubectl get workflow iris-demo -n "$NAMESPACE" >/dev/null 2>&1; then
         echo "✅ Workflow already exists (created by ArgoCD)"
@@ -169,7 +192,7 @@ deploy() {
         argo get iris-demo -n "$NAMESPACE"
     else
         echo "Submitting workflow manually..."
-        argo submit demo_iris_pipeline/workflow.yaml -n "$NAMESPACE"
+        argo submit manifests/base/workflows/iris-workflow.yaml -n "$NAMESPACE"
     fi
 }
 
@@ -190,6 +213,9 @@ case "$ACTION" in
         ;;
 esac
 
+# Get dynamic port configuration
+MODEL_PORT=$(get_port_for_namespace "$NAMESPACE")
+
 echo ""
 echo "🎯 Environment: $ENV_TYPE ($NAMESPACE)"
 echo "📊 Monitor with:"
@@ -209,9 +235,31 @@ if [[ "$NAMESPACE" != "argowf" ]]; then
     echo ""
     echo "🎯 Development Environment Commands:"
     echo "   # Test the semantic versioned model (when ready):"
-    echo "   kubectl port-forward -n $NAMESPACE svc/iris-0-2-0-default-classifier 8080:8080 &"
-    echo "   curl -X POST http://localhost:8080/api/v1.0/predictions -H 'Content-Type: application/json' -d '{\"data\":{\"ndarray\":[[5.1,3.5,1.4,0.2]]}}'"
+    echo "   kubectl port-forward -n $NAMESPACE svc/iris-0-2-0-default-classifier $MODEL_PORT:$MODEL_PORT &"
+    echo "   curl -X POST http://localhost:$MODEL_PORT/api/v1.0/predictions -H 'Content-Type: application/json' -d '{\"data\":{\"ndarray\":[[5.1,3.5,1.4,0.2]]}}'"
+    echo ""
+    echo "   # Or use the makefile targets:"
+    echo "   make port-forward-dev    # Port forward with correct port"
+    echo "   make smoke-test-dev      # Run automated test"
     echo ""
     echo "   # Clean up when done:"
     echo "   ./scripts/cleanup-dev-environment.sh $NAMESPACE"
+else
+    # Production environment
+    echo ""
+    echo "🎯 Production Environment Commands:"
+    echo "   # Test the model (when ready):"
+    echo "   kubectl port-forward -n $NAMESPACE svc/iris-0-2-0-default-classifier $MODEL_PORT:$MODEL_PORT &"
+    echo "   curl -X POST http://localhost:$MODEL_PORT/api/v1.0/predictions -H 'Content-Type: application/json' -d '{\"data\":{\"ndarray\":[[5.1,3.5,1.4,0.2]]}}'"
+    echo ""
+    echo "   # Or use the makefile targets:"
+    echo "   make port-forward-prod   # Port forward with correct port"
+    echo "   make smoke-test-prod     # Run automated test"
 fi
+
+echo ""
+echo "📊 Configuration Summary:"
+echo "   Environment: $ENV_TYPE"
+echo "   Namespace: $NAMESPACE"  
+echo "   Model Port: $MODEL_PORT"
+echo "   ArgoCD App: $ARGOCD_APP"

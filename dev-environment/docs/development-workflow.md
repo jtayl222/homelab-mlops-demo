@@ -4,9 +4,9 @@ This guide explains how to safely develop and test new features using feature br
 
 ## 🎯 Overview
 
-Our MLOps pipeline uses **GitOps principles** with separate environments:
-- **`main` branch** → **`argowf` namespace** (Production)
-- **Feature branches** → **`argowf-dev*` namespaces** (Development)
+Our MLOps pipeline uses **GitOps principles** with **kustomize overlays** for environment management:
+- **`main` branch** → **`argowf` namespace** (Production) → `manifests/overlays/production`
+- **Feature branches** → **`argowf-dev*` namespaces** (Development) → `manifests/overlays/development`
 
 This allows safe development and testing without disrupting the production pipeline.
 
@@ -27,52 +27,72 @@ git push -u origin feature/your-feature-name
 
 ### 2. Set Up Development Environment
 ```bash
-# Set up complete development environment
-# This orchestrates all setup scripts with proper separation of concerns
-./scripts/setup-dev-environment.sh
+# Set up complete development environment with kustomize
+make deploy-dev
 
-# Or with custom namespace and branch
-./scripts/setup-dev-environment.sh argowf-dev-alice feature/your-feature-name
+# Or use the script directly
+./scripts/restart-demo.sh argowf-dev deploy
+
+# Or with custom namespace
+./scripts/restart-demo.sh argowf-dev-yourname deploy
 ```
 
 ### 3. Develop and Test
 ```bash
 # Make your changes to the MLOps pipeline
-# Edit workflow.yaml, Python scripts, etc.
+# Edit workflow files, Python scripts, kustomize configs, etc.
 
 # Test changes locally first (if possible)
-python demo_iris_pipeline/train.py  # Test training script
-python demo_iris_pipeline/test_model.py  # Test validation
+python demo_iris_pipeline/src/train.py  # Test training script
+python demo_iris_pipeline/src/test_model.py  # Test validation
 
 # Commit and push changes
 git add .
 git commit -m "feat: add semantic versioning to MLOps pipeline"
 git push origin feature/your-feature-name
 
-# Update development environment with changes
-./scripts/update-configmap.sh argowf-dev
-
-# Sync ArgoCD to deploy changes
-argocd app sync homelab-mlops-demo-dev
+# Deploy changes to development environment
+make deploy-dev
 
 # Test the complete pipeline
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev --watch
+make demo-dev
+
+# Or manually submit workflow
+argo submit manifests/base/workflows/iris-workflow.yaml -n argowf-dev --watch
 ```
 
 ### 4. Monitor and Debug
 ```bash
-# Watch workflow progress
+# Use makefile targets for easier debugging
+make workflow-status           # Check workflow status
+make port-forward-dev         # Port forward development service
+make smoke-test-dev          # Run automated tests
+
+# Or use direct commands
 argo get iris-demo -n argowf-dev --watch
-
-# Check logs for specific steps
 argo logs iris-demo -n argowf-dev
-
-# Debug failed steps
 kubectl describe pod <pod-name> -n argowf-dev
 kubectl logs <pod-name> -n argowf-dev
 ```
 
-### 5. Merge When Ready
+### 5. Test Model Predictions
+```bash
+# Get dynamic port configuration
+DEV_PORT=$(make show-config | grep "Development port" | cut -d: -f2 | tr -d ' ')
+
+# Port forward and test
+kubectl port-forward -n argowf-dev svc/dev-iris-0-2-0-default-classifier $DEV_PORT:$DEV_PORT &
+
+# Test prediction with dynamic port
+curl -X POST http://localhost:$DEV_PORT/api/v1.0/predictions \
+  -H 'Content-Type: application/json' \
+  -d '{"data":{"ndarray":[[5.1,3.5,1.4,0.2]]}}'
+
+# Or use makefile target
+make smoke-test-dev
+```
+
+### 6. Merge When Ready
 ```bash
 # When feature is working in development
 git checkout main
@@ -81,554 +101,418 @@ git merge feature/your-feature-name
 git push origin main
 
 # Clean up development resources
-./scripts/cleanup-dev-environment.sh argowf-dev
+make cleanup
 ```
 
-## 🛠️ Modular Scripts Architecture
+## 🛠️ Kustomize-Based Configuration Management
 
-Our development environment uses **separation of concerns** with focused scripts:
+Our environment uses **centralized port configuration** with kustomize overlays:
 
 ```
-scripts/
-├── create-namespace.sh           # Namespace management
-├── setup-rbac.sh                 # RBAC management  
-├── copy-secrets.sh               # Secret management
-├── update-configmap.sh           # ConfigMap management
-├── create-argocd-app.sh          # ArgoCD app management
-├── verify-environment.sh         # Environment verification
-├── setup-dev-environment.sh      # Environment orchestration
-└── cleanup-dev-environment.sh    # Cleanup management
+manifests/
+├── base/                     # Base configuration
+│   ├── configmaps/
+│   │   ├── app-config.yaml  # Central port configuration
+│   │   └── iris-src-configmap.yaml
+│   ├── workflows/
+│   └── ...
+└── overlays/                 # Environment-specific overrides
+    ├── development/
+    │   ├── kustomization.yaml
+    │   └── app-config-patch.yaml  # Dev-specific ports
+    └── production/
+        └── kustomization.yaml
 ```
 
-### Individual Script Usage
-
+### Configuration Commands
 ```bash
-# Namespace operations
-./scripts/create-namespace.sh argowf-dev-alice
+# View current configuration
+make show-config
 
-# RBAC operations
-./scripts/setup-rbac.sh argowf argowf-dev-alice
+# Preview what will be deployed
+make preview-dev      # Development environment
+make preview-prod     # Production environment
 
-# Secret operations  
-./scripts/copy-secrets.sh argowf argowf-dev-alice
+# Validate configuration
+make validate-kustomize
 
-# ConfigMap operations
-./scripts/update-configmap.sh argowf-dev-alice
-
-# ArgoCD operations
-./scripts/create-argocd-app.sh argowf-dev-alice feature/semantic-versioning
-
-# Environment verification
-./scripts/verify-environment.sh argowf-dev-alice
-
-# Complete cleanup
-./scripts/cleanup-dev-environment.sh argowf-dev-alice
+# Check for remaining hardcoded ports
+make clean-ports
 ```
 
-## 🛠️ Complete Environment Setup Script
+## 🔄 Environment-Specific Development
 
+### Development Environment
 ```bash
-# filepath: /home/user/homelab-mlops-demo/scripts/setup-dev-environment.sh
-#!/bin/bash
-set -e
+# Deploy development overlay
+make deploy-dev
 
-NAMESPACE=${1:-argowf-dev}
-FEATURE_BRANCH=${2:-$(git branch --show-current)}
+# Configuration includes:
+# - Namespace: argowf-dev
+# - Name prefix: dev-
+# - Model serving port: 9001 (default)
+# - Resource limits: Optimized for development
 
-echo "🚀 Setting up development environment"
-echo "   Namespace: $NAMESPACE"
-echo "   Feature Branch: $FEATURE_BRANCH"
-
-# Use individual scripts with clear separation
-echo ""
-echo "1️⃣ Creating namespace..."
-./scripts/create-namespace.sh $NAMESPACE
-
-echo ""
-echo "2️⃣ Setting up RBAC..."
-./scripts/setup-rbac.sh argowf $NAMESPACE
-
-echo ""
-echo "3️⃣ Copying secrets..."
-./scripts/copy-secrets.sh argowf $NAMESPACE
-
-echo ""
-echo "4️⃣ Updating ConfigMap..."
-./scripts/update-configmap.sh $NAMESPACE
-
-echo ""
-echo "5️⃣ Creating ArgoCD application..."
-./scripts/create-argocd-app.sh $NAMESPACE $FEATURE_BRANCH
-
-echo ""
-echo "6️⃣ Verifying environment..."
-./scripts/verify-environment.sh $NAMESPACE
-
-echo ""
-echo "🎯 Development environment setup complete!"
-echo ""
-echo "Next steps:"
-echo "  1. git add -A && git commit -m 'your changes'"
-echo "  2. git push origin $FEATURE_BRANCH"
-echo "  3. argocd app sync homelab-mlops-demo-$(echo $NAMESPACE | sed 's/argowf-//')"
-echo "  4. argo submit demo_iris_pipeline/workflow.yaml -n $NAMESPACE --watch"
-
-chmod +x scripts/setup-dev-environment.sh
+# Test development deployment
+make demo-dev
+make smoke-test-dev
 ```
 
-## 🔄 Common Development Workflows
+### Production Environment
+```bash
+# Deploy production overlay
+make deploy-prod
+
+# Configuration includes:
+# - Namespace: argowf
+# - Model serving port: 9000 (default)
+# - Resource limits: Production-ready
+
+# Test production deployment
+make demo-prod
+make smoke-test-prod
+```
+
+## 🔧 Common Development Workflows
 
 ### Testing New Features
 ```bash
 # 1. Create feature branch
 git checkout -b feature/model-monitoring
 
-# 2. Set up isolated dev environment
-./scripts/setup-dev-environment.sh argowf-dev-monitoring feature/model-monitoring
+# 2. Deploy development environment
+make deploy-dev
 
 # 3. Make changes iteratively
-# Edit workflow.yaml, add monitoring.py, etc.
+# Edit files, update configurations
 
-# 4. Test iteratively
+# 4. Test iteratively with kustomize
 git add -A && git commit -m "wip: add model monitoring"
 git push origin feature/model-monitoring
-./scripts/update-configmap.sh argowf-dev-monitoring
-argocd app sync homelab-mlops-demo-monitoring
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev-monitoring --watch
+make deploy-dev
+make demo-dev
 
 # 5. Debug and iterate
-argo logs iris-demo -n argowf-dev-monitoring
+make workflow-status
+argo logs iris-demo -n argowf-dev
 # Make fixes, repeat steps 4-5
 
 # 6. Final testing
-argo delete iris-demo -n argowf-dev-monitoring
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev-monitoring --watch
+make cleanup
+make deploy-dev
+make demo-dev
 
 # 7. Merge to main
 git checkout main && git merge feature/model-monitoring
 
 # 8. Clean up
-./scripts/cleanup-dev-environment.sh argowf-dev-monitoring
+make cleanup
 ```
 
-### Experimenting with Workflow Changes
+### Testing Configuration Changes
 ```bash
-# Create experimental workflow
-cp demo_iris_pipeline/workflow.yaml demo_iris_pipeline/workflow-experimental.yaml
+# Edit base configuration
+nano manifests/base/configmaps/app-config.yaml
 
-# Edit experimental version with your changes
-nano demo_iris_pipeline/workflow-experimental.yaml
+# Or edit development overlay
+nano manifests/overlays/development/app-config-patch.yaml
 
-# Update configmap with experimental workflow
-./scripts/update-configmap.sh argowf-dev
+# Preview changes
+make preview-dev
 
-# Test experimental workflow
-argo submit demo_iris_pipeline/workflow-experimental.yaml -n argowf-dev --watch
+# Validate changes
+make validate-kustomize
 
-# Compare results
-argo list -n argowf-dev
-argo get iris-demo -n argowf-dev
-argo get iris-demo-experimental -n argowf-dev
+# Deploy changes
+make deploy-dev
+
+# Test with new configuration
+make demo-dev
 ```
 
-### Testing Different Model Configurations
+### Multi-Environment Testing
 ```bash
-# Test different model parameters
-export MODEL_EXPERIMENT="random-forest-v2"
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev \
-  --parameter model-name=$MODEL_EXPERIMENT --watch
+# Test in both environments
+make deploy-dev
+make demo-dev
 
-# Check MLflow for experiment results
-kubectl port-forward -n mlflow svc/mlflow 5000:5000 &
-# Visit http://localhost:5000 to compare experiments
+make deploy-prod  
+make demo-prod
+
+# Compare configurations
+make show-config
+make check-ports
 ```
 
 ## 🐛 Debugging Common Issues
 
 ### Environment Setup Issues
 ```bash
-# Verify complete environment setup
-./scripts/verify-environment.sh argowf-dev
+# Verify environment setup
+make validate-kustomize
 
-# Check individual components
-kubectl get namespaces | grep argowf-dev
-kubectl get serviceaccounts -n argowf-dev | grep argo-workflow
-kubectl get secrets -n argowf-dev | grep -E "(minio|ghcr)"
-kubectl get configmaps -n argowf-dev | grep iris-src
+# Check kustomize output
+make preview-dev | less
+make preview-prod | less
+
+# Verify configuration
+make show-config
+make check-ports
 ```
 
-### RBAC Issues
+### Port Configuration Issues
 ```bash
-# Check RBAC setup
-kubectl get roles -n argowf-dev
-kubectl get rolebindings -n argowf-dev
-kubectl describe rolebinding -n argowf-dev
+# Check current port configuration
+make show-config
 
-# Fix RBAC issues
-./scripts/setup-rbac.sh argowf argowf-dev
+# Verify port assignments
+kubectl get configmap -n argowf-dev dev-app-config -o yaml
+kubectl get configmap -n argowf app-config -o yaml
+
+# Test port connectivity
+make port-forward-dev  # In one terminal
+make smoke-test-dev    # In another terminal
 ```
 
-### Secret Issues
+### Kustomize Issues
 ```bash
-# Check secrets
-kubectl get secrets -n argowf-dev | grep -E "(minio|ghcr)"
+# Validate kustomization files
+kubectl kustomize manifests/overlays/development --dry-run
+kubectl kustomize manifests/overlays/production --dry-run
 
-# Re-copy secrets if missing
-./scripts/copy-secrets.sh argowf argowf-dev
+# Check for validation errors
+make validate-kustomize
 
-# Verify secret contents
-kubectl get secret minio-credentials-wf -n argowf-dev -o yaml | head -20
+# Fix common issues
+kubectl kustomize manifests/overlays/development > /tmp/debug-dev.yaml
+kubectl apply --dry-run=client -f /tmp/debug-dev.yaml
 ```
 
-### ConfigMap Issues
+### Model Serving Issues
 ```bash
-# Check configmap
-kubectl get configmap iris-src -n argowf-dev
+# Check model deployment status
+kubectl get seldondeployment -n argowf-dev
+kubectl describe seldondeployment -n argowf-dev
 
-# Update configmap with latest changes
-./scripts/update-configmap.sh argowf-dev
+# Check model pods
+kubectl get pods -n argowf-dev | grep classifier
+kubectl logs -n argowf-dev <classifier-pod>
 
-# Restart workflow after configmap update
-argo delete iris-demo -n argowf-dev
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev --watch
-```
-
-### Workflow Issues
-```bash
-# Check workflow status
-argo get iris-demo -n argowf-dev
-
-# Get logs from specific pods directly
-kubectl logs iris-demo-train-1086554222 -n argowf-dev
-kubectl logs iris-demo-model-validation-4150168498 -n argowf-dev
-kubectl logs iris-demo-semantic-versioning-407853820 -n argowf-dev
-kubectl logs iris-demo-kaniko-2749533263 -n argowf-dev
-kubectl logs iris-demo-deploy-2552441111 -n argowf-dev
-
-# Check pod details for failed steps
-kubectl describe pod <failed-pod-name> -n argowf-dev
+# Test model endpoint with correct port
+DEV_PORT=$(./scripts/get-config.sh development)
+kubectl port-forward -n argowf-dev svc/dev-iris-0-2-0-default-classifier $DEV_PORT:$DEV_PORT &
+curl -X POST http://localhost:$DEV_PORT/api/v1.0/predictions \
+  -H 'Content-Type: application/json' \
+  -d '{"data":{"ndarray":[[5.1,3.5,1.4,0.2]]}}'
 ```
 
 ## 📊 Testing Strategy
 
-### Unit Testing
+### Configuration Testing
 ```bash
-# Test individual components before workflow
-cd demo_iris_pipeline/
+# Test configuration extraction
+./scripts/get-config.sh development
+./scripts/get-config.sh production
 
-# Test training script
-python -c "
-import sys; sys.path.append('.')
-from train import train_model
-train_model()
-print('✅ Training works')
-"
+# Test makefile configuration
+make show-config
 
-# Test validation script  
-python -c "
-import sys; sys.path.append('.')  
-from test_model import validate_model
-validate_model('/tmp/model.pkl')
-print('✅ Validation works')
-"
-
-# Test versioning script
-python -c "
-import sys; sys.path.append('.')
-import os
-os.environ['VALIDATION_RESULTS_PATH'] = '/tmp/validation_results.json'
-os.environ['OUTPUT_PATH'] = '/tmp/model_version.txt'
-os.environ['VERSION_TAG_PATH'] = '/tmp/version_tag.txt'
-# Create mock validation results
-import json
-with open('/tmp/validation_results.json', 'w') as f:
-    json.dump({'validation_status': 'PASSED', 'accuracy': 0.95}, f)
-from version_model import main
-main()
-print('✅ Versioning works')
-"
-
-# Test deployment script
-python -c "
-import sys; sys.path.append('.')
-import os
-os.environ['MODEL_VERSION'] = '0.1.0'
-os.environ['IMAGE_TAG'] = 'test'
-os.environ['NAMESPACE'] = 'test'
-# Mock the deployment (don't actually deploy)
-print('✅ Deployment script works')
-"
+# Validate all environments
+make validate-kustomize
 ```
 
 ### Integration Testing
 ```bash
-# Test complete workflow end-to-end
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev --watch
+# Test complete pipeline with dynamic configuration
+make deploy-dev
+make demo-dev
+make smoke-test-dev
 
-# Test specific workflow steps
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev \
-  --entrypoint train --watch  # Only run training
-
-# Test with different parameters
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev \
-  --parameter model-name=test-model --watch
+# Test production pipeline
+make deploy-prod
+make demo-prod
+make smoke-test-prod
 ```
 
 ### Performance Testing
 ```bash
-# Monitor resource usage during workflow
-kubectl top pods -n argowf-dev --watch
+# Monitor resource usage with proper limits
+kubectl top pods -n argowf-dev --containers
 
-# Check workflow duration and compare with baseline
-argo get iris-demo -n argowf-dev | grep Duration
-
-# Compare with production metrics
-argo get iris-demo -n argowf | grep Duration
-
-# Check resource consumption
-argo get iris-demo -n argowf-dev | grep ResourcesDuration
-```
-
-### Smoke Testing
-```bash
-./scripts/smoke-test.sh 
+# Compare development vs production resource usage
+kubectl describe pod -n argowf-dev | grep -A5 "Limits"
+kubectl describe pod -n argowf | grep -A5 "Limits"
 ```
 
 ## 🚀 Advanced Development Patterns
 
-### Multi-Environment Testing
+### Custom Port Configuration
 ```bash
-# Test same feature in multiple environments
-./scripts/setup-dev-environment.sh argowf-dev1 feature/semantic-versioning
-./scripts/setup-dev-environment.sh argowf-dev2 feature/semantic-versioning
+# Edit development overlay to use custom port
+cat > manifests/overlays/development/app-config-patch.yaml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  MODEL_SERVING_PORT: "9002"  # Custom development port
+  MODEL_METRICS_PORT: "6002"
+EOF
 
-# Test with different configurations
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev1 \
-  --parameter model-name=test-v1 --watch
+# Deploy with custom configuration
+make deploy-dev
 
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev2 \
-  --parameter model-name=test-v2 --watch
+# Verify custom port is used
+make show-config
+```
+
+### Environment-Specific Resource Limits
+```bash
+# Add resource limits patch for development
+cat > manifests/overlays/development/resource-limits-patch.yaml << 'EOF'
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: iris-demo
+spec:
+  templates:
+  - name: train
+    container:
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "250m"
+        limits:
+          memory: "1Gi"
+          cpu: "500m"
+EOF
+
+# Update kustomization to include resource patch
+echo "  - path: resource-limits-patch.yaml" >> manifests/overlays/development/kustomization.yaml
+
+# Deploy with resource limits
+make deploy-dev
+```
+
+### A/B Testing with Different Configurations
+```bash
+# Create custom overlay for A/B testing
+mkdir -p manifests/overlays/ab-test
+cp -r manifests/overlays/development/* manifests/overlays/ab-test/
+
+# Modify configuration for A/B test
+sed -i 's/9001/9003/g' manifests/overlays/ab-test/app-config-patch.yaml
+
+# Deploy A/B test environment
+kubectl apply -k manifests/overlays/ab-test
 
 # Compare results
-argo list -n argowf-dev1
-argo list -n argowf-dev2
-```
-
-### Parallel Development
-```bash
-# Multiple developers can work simultaneously
-# Developer Alice:
-git checkout -b feature/model-improvements
-./scripts/setup-dev-environment.sh argowf-dev-alice feature/model-improvements
-
-# Developer Bob:
-git checkout -b feature/performance-optimization  
-./scripts/setup-dev-environment.sh argowf-dev-bob feature/performance-optimization
-
-# Each has isolated environment - no conflicts!
-```
-
-### A/B Testing Development
-```bash
-# Set up A/B test environments
-./scripts/setup-dev-environment.sh argowf-dev-a feature/model-v1
-./scripts/setup-dev-environment.sh argowf-dev-b feature/model-v2
-
-# Deploy different model versions
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev-a --parameter model-name=model-a
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev-b --parameter model-name=model-b
-
-# Compare model performance
-kubectl port-forward -n argowf-dev-a svc/model-a-default 8080:8080 &
-kubectl port-forward -n argowf-dev-b svc/model-b-default 8081:8080 &
-
-# Test both endpoints and compare results
-```
-
-### Rollback Testing
-```bash
-# Test rollback scenarios
-git checkout main
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev --watch  # Test main
-
-git checkout feature/your-feature
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev --watch  # Test feature
-
-# Validate rollback capability
-git checkout main
-./scripts/update-configmap.sh argowf-dev
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev --watch  # Should work
+make show-config
+kubectl get pods -n argowf-dev | grep classifier
+kubectl get pods -n argowf-ab-test | grep classifier
 ```
 
 ## 🎯 Best Practices
 
-### 1. **Always Use Feature Branches**
-- Never develop directly on `main`
-- Use descriptive branch names: `feature/semantic-versioning`, `fix/memory-leak`, `docs/api-reference`
-- One feature per branch for clean history
+### 1. **Use Centralized Configuration**
+- All port configurations in `manifests/base/configmaps/app-config.yaml`
+- Environment-specific overrides in overlay patches
+- Never hardcode ports in scripts or documentation
 
-### 2. **Isolate Development Environments**
-- Each feature gets its own namespace: `argowf-dev-{feature}`, `argowf-dev-{developer}`
-- Use descriptive namespace names for easy identification
-- Clean up environments when done
-
-### 3. **Test Incrementally**
-- Test individual components before full workflow
-- Use unit tests for Python scripts
-- Test workflow steps incrementally
-- Validate end-to-end functionality
-
-### 4. **Use Proper Commit Messages**
+### 2. **Validate Before Deploy**
 ```bash
-# Good commit messages
-git commit -m "feat: add semantic versioning to MLOps pipeline"
-git commit -m "fix: resolve kubectl installation in deploy step"
-git commit -m "docs: update development workflow guide"
-git commit -m "refactor: separate concerns in setup scripts"
-
-# Follow conventional commits: type(scope): description
+# Always validate before deploying
+make validate-kustomize
+make preview-dev  # Review what will be deployed
+make deploy-dev   # Deploy after validation
 ```
 
-### 5. **Document Changes**
-- Update docs alongside code changes
-- Document breaking changes in commit messages
-- Include examples for new features
-- Update README if adding new scripts
-
-### 6. **Monitor Resource Usage**
+### 3. **Use Makefile Targets**
 ```bash
-# Regularly check resource consumption
-kubectl top nodes
-kubectl top pods -n argowf-dev
-
-# Set resource limits in development workflows
-# Clean up unused namespaces regularly
-./scripts/cleanup-dev-environment.sh <old-namespace>
+# Use consistent makefile targets instead of raw commands
+make deploy-dev        # Instead of kubectl apply -k ...
+make demo-dev         # Instead of argo submit ...
+make smoke-test-dev   # Instead of manual curl commands
+make show-config      # Instead of manual config extraction
 ```
 
-### 7. **Security Best Practices**
-- Never commit secrets to git
-- Use separate service accounts for development
-- Copy secrets cleanly without ownerReferences
-- Regularly rotate development credentials
+### 4. **Monitor Configuration Drift**
+```bash
+# Regularly check for hardcoded references
+make clean-ports
+
+# Verify configuration consistency
+make check-ports
+
+# Validate all environments
+make validate-kustomize
+```
 
 ## 🧹 Environment Management
 
-### Daily Cleanup
+### Configuration Management
 ```bash
-# List all development namespaces
-kubectl get namespaces | grep argowf-dev
+# List current configurations
+make show-config
 
-# Check which are actively used
-for ns in $(kubectl get namespaces -o name | grep argowf-dev | cut -d'/' -f2); do
-  echo "Namespace: $ns"
-  kubectl get pods -n $ns 2>/dev/null | grep -v "No resources" || echo "  Empty"
-done
+# Check for configuration drift
+make clean-ports
 
-# Clean up old/unused environments
-./scripts/cleanup-dev-environment.sh argowf-dev-old-feature
+# Update configuration centrally
+nano manifests/base/configmaps/app-config.yaml
+make validate-kustomize
+make deploy-dev
+make deploy-prod
 ```
 
-### Bulk Cleanup
+### Resource Management
 ```bash
-# List all dev namespaces with age
-kubectl get namespaces | grep argowf-dev
+# Check resource usage across environments
+kubectl top pods -n argowf-dev
+kubectl top pods -n argowf
 
-# Interactive cleanup of old environments
-./scripts/cleanup-dev-environments.sh
+# Monitor configuration consistency
+make check-ports
+make workflow-status
 ```
-
-### Environment Inventory
-```bash
-# Generate environment inventory
-echo "=== Development Environment Inventory ==="
-for ns in $(kubectl get namespaces -o name | grep argowf-dev | cut -d'/' -f2); do
-  echo ""
-  echo "Namespace: $ns"
-  echo "  Age: $(kubectl get namespace $ns -o jsonpath='{.metadata.creationTimestamp}')"
-  echo "  Workflows: $(argo list -n $ns 2>/dev/null | wc -l || echo 0)"
-  echo "  Pods: $(kubectl get pods -n $ns --no-headers 2>/dev/null | wc -l || echo 0)"
-  echo "  ArgoCD App: $(argocd app list | grep $ns | awk '{print $1}' || echo 'None')"
-done
-```
-
-
-## 📈 Performance Optimization
-
-### Development Environment Performance
-```bash
-# Use resource-optimized workflow for development
-cp demo_iris_pipeline/workflow.yaml demo_iris_pipeline/workflow-dev.yaml
-
-# Edit workflow-dev.yaml to use smaller resource requests
-# Example: Change memory from "1Gi" to "512Mi", cpu from "1" to "500m"
-
-# Test with optimized resources
-argo submit demo_iris_pipeline/workflow-dev.yaml -n argowf-dev --watch
-```
-
-### Faster Development Cycles
-```bash
-# Use cached base images for faster container builds
-# Update Dockerfile to use multi-stage builds
-# Pre-pull common images to development nodes
-
-# Skip expensive steps during development
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev \
-  --entrypoint train --watch  # Only run training step
-```
-
-## 🧹 Complete Cleanup Script
-
-```bash
-# filepath: /home/user/homelab-mlops-demo/scripts/cleanup-dev-environments.sh
-#!/bin/bash
-
-echo "🧹 Cleaning up development environments..."
-
-# List development namespaces
-DEV_NAMESPACES=$(kubectl get namespaces -o name | grep "argowf-dev")
-
-if [ -z "$DEV_NAMESPACES" ]; then
-  echo "No development namespaces found"
-  exit 0
-fi
-
-echo "Found development namespaces:"
-echo "$DEV_NAMESPACES"
-
-read -p "Delete all development environments? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-  # Delete namespaces
-  echo "$DEV_NAMESPACES" | xargs kubectl delete
-  
-  # Delete ArgoCD applications
-  argocd app list | grep "homelab-mlops-demo-dev" | awk '{print $1}' | xargs argocd app delete
-  
-  echo "✅ Development environments cleaned up"
-else
-  echo "Cleanup cancelled"
-fi
-
-chmod +x scripts/cleanup-dev-environments.sh
-```
-
-This comprehensive development workflow guide provides everything needed to safely and efficiently develop MLOps pipeline features with proper separation of concerns, comprehensive testing, and production-ready practices! 🎯
 
 ## 📋 Quick Reference
 
 ### Essential Commands
 ```bash
-# Setup development environment
-./scripts/setup-dev-environment.sh argowf-dev-yourname feature/your-feature
+# Configuration management
+make show-config         # Show current port configuration
+make validate-kustomize  # Validate all kustomizations
+make preview-dev        # Preview development manifests
+make clean-ports        # Check for hardcoded ports
 
-# Update code and test
-git add -A && git commit -m "your changes"
-git push origin feature/your-feature
-./scripts/update-configmap.sh argowf-dev-yourname
-argo submit demo_iris_pipeline/workflow.yaml -n argowf-dev-yourname --watch
+# Environment management
+make deploy-dev         # Deploy development environment
+make deploy-prod        # Deploy production environment
+make demo-dev          # Run development demo
+make demo-prod         # Run production demo
 
-# Clean up when done
-./scripts/cleanup-dev-environment.sh argowf-dev-yourname
+# Testing and debugging
+make smoke-test-dev     # Test development deployment
+make smoke-test-prod    # Test production deployment
+make port-forward-dev   # Port forward development service
+make port-forward-prod  # Port forward production service
+make workflow-status    # Check workflow status
+make cleanup           # Clean up all environments
 ```
+
+### Configuration Files
+```bash
+# Base configuration
+manifests/base/configmaps/app-config.yaml     # Central port configuration
+
+# Environment-specific overrides
+manifests/overlays/development/app-config-patch.yaml  # Development ports
+manifests/overlays/production/kustomization.yaml     # Production config
+
+# Kustomize overlays
+manifests/overlays/development/kustomization.yaml     # Development overlay
+manifests/overlays/production/kustomization.yaml      # Production overlay
+```
+
+This updated development workflow now uses the centralized kustomize configuration for all port management, eliminating hardcoded values and providing consistent, environment-aware configuration! 🎯

@@ -255,10 +255,10 @@ iris-0-2-0-default-0-classifier-xyz123       2/2     Running   0          5m
 ### Test Model Endpoint
 ```bash
 # Port forward to test locally
-kubectl port-forward -n argowf svc/iris-0-2-0-default-classifier 8080:8080 &
+kubectl port-forward -n argowf svc/iris-0-2-0-default-classifier 9000:9000 &
 
 # Send test prediction request
-curl -X POST http://localhost:8080/api/v1.0/predictions \
+curl -X POST http://localhost:9000/api/v1.0/predictions \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
@@ -358,9 +358,9 @@ echo -e "\n3. Checking Model Deployment..."
 kubectl get seldondeployments -n argowf
 
 echo -e "\n4. Testing Model Endpoint..."
-kubectl port-forward -n argowf svc/iris-default 8080:8080 &
+kubectl port-forward -n argowf svc/iris-default 9000:9000 &
 sleep 2
-curl -s -X POST http://localhost:8080/api/v1.0/predictions \
+curl -s -X POST http://localhost:9000/api/v1.0/predictions \
   -H "Content-Type: application/json" \
   -d '{"data": {"ndarray": [[5.1, 3.5, 1.4, 0.2]]}}' | jq .
 kill %1

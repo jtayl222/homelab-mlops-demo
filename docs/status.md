@@ -80,7 +80,7 @@ features = store.get_historical_features(
     image: prometheus/prometheus
     env:
     - name: MONITORING_ENDPOINT
-      value: "http://iris-classifier:8080/metrics"
+      value: "http://iris-classifier:9000/metrics"
 ```
 
 ### 5. A/B Testing & Canary Deployments

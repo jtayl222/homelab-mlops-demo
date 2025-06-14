@@ -9,7 +9,7 @@ spec:
   source:
     repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
     targetRevision: main
-    path: demo_iris_pipeline  # <- directory that contains workflow.yaml
+    path: manifests/overlays/production  # Use kustomize overlay
   destination:
     server: https://kubernetes.default.svc
     namespace: argowf  # Change this to argowf - where workflows run
@@ -18,11 +18,4 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-    - CreateNamespace=true
-    - PruneLast=true
-    retry:
-      limit: 2
-      backoff:
-        duration: 5s
-        factor: 2
-        maxDuration: 3m
+      - CreateNamespace=true

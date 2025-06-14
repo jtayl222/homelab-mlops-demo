@@ -59,8 +59,8 @@ kubectl delete seldondeployment iris -n argowf
 
 **Problem:**
 ```bash
-$ kubectl port-forward -n argowf svc/iris-default 8080:8080 &
-error: Service iris-default does not have a service port 8080
+$ kubectl port-forward -n argowf svc/iris-default 9000:9000 &
+error: Service iris-default does not have a service port 9000
 ```
 
 **Solution:**
@@ -72,19 +72,19 @@ kubectl describe svc iris-default -n argowf
 
 # Example output:
 # NAME           TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)             AGE
-# iris-default   ClusterIP   10.43.247.226   <none>        8000/TCP,5001/TCP   59m
+# iris-default   ClusterIP   10.43.247.226   <none>        9000/TCP,5001/TCP   59m
 
-# Use the correct port (8000 in this case)
-kubectl port-forward -n argowf svc/iris-default 8080:8000 &
+# Use the correct port (9000 in this case)
+kubectl port-forward -n argowf svc/iris-default 9000:9000 &
 
 # Test the endpoint
-curl -X POST http://localhost:8080/api/v1.0/predictions \
+curl -X POST http://localhost:9000/api/v1.0/predictions \
   -H "Content-Type: application/json" \
   -d '{"data": {"ndarray": [[5.1, 3.5, 1.4, 0.2]]}}'
 ```
 
 **Common Seldon Service Ports:**
-- `8000`: Main prediction endpoint
+- `9000`: Main prediction endpoint
 - `5001`: Metrics endpoint  
 - `9000`: Internal classifier endpoint
 - `9500`: Internal metrics endpoint
@@ -666,22 +666,22 @@ You need to test if your application is actually working inside the container, b
 # Test HTTP endpoints using Python (usually available in Python containers)
 kubectl exec -n argowf <pod-name> -c <container-name> -- python -c "
 import urllib.request
-response = urllib.request.urlopen('http://localhost:8080/health')
+response = urllib.request.urlopen('http://localhost:9000/health')
 print(response.read().decode('utf-8'))
 "
 
 # Example: Test your FastAPI health endpoint
 kubectl exec -n argowf iris-default-0-classifier-564d447d7b-jskd7 -c classifier -- python -c "
 import urllib.request
-response = urllib.request.urlopen('http://localhost:8080/health')
+response = urllib.request.urlopen('http://localhost:9000/health')
 print(response.read().decode('utf-8'))
 "
 
 # Test with wget if available
-kubectl exec -n argowf <pod-name> -c <container-name> -- wget -qO- http://localhost:8080/health
+kubectl exec -n argowf <pod-name> -c <container-name> -- wget -qO- http://localhost:9000/health
 
 # Test TCP connectivity
-kubectl exec -n argowf <pod-name> -c <container-name> -- nc -z localhost 8080
+kubectl exec -n argowf <pod-name> -c <container-name> -- nc -z localhost 9000
 echo $?  # 0 means success
 
 # Check what processes are running and listening
@@ -730,7 +730,7 @@ done
 kubectl exec -n argowf <pod-name> -c <container-name> -- python -c "
 import urllib.request
 try:
-    response = urllib.request.urlopen('http://localhost:8080/health')
+    response = urllib.request.urlopen('http://localhost:9000/health')
     print('✅ Health check passed:', response.read().decode('utf-8'))
 except Exception as e:
     print('❌ Health check failed:', str(e))
@@ -924,10 +924,10 @@ After applying any fix:
 kubectl get pods -n argowf -l seldon-deployment-id=iris
 
 # 2. If pod is running, test the endpoint
-kubectl port-forward -n argowf svc/iris-default 8080:8000 &
+kubectl port-forward -n argowf svc/iris-default 9000:9000 &
 
 # 3. Test prediction
-curl -X POST http://localhost:8080/api/v1.0/predictions \
+curl -X POST http://localhost:9000/api/v1.0/predictions \
   -H "Content-Type: application/json" \
   -d '{"data": {"ndarray": [[5.1, 3.5, 1.4, 0.2]]}}'
 

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  MODEL_SERVING_PORT: "9001"  # Different port for dev
+  MINIO_HOST: "minio-dev.minio.svc.cluster.local"  # Dev MinIO if needed

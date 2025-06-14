@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: argowf
+
+labels:
+  - pairs:
+      environment: production
+
+# Add production-specific patches if needed
+# patches:
+#   - path: resource-limits-patch.yaml
+#     target:
+#       kind: Deployment

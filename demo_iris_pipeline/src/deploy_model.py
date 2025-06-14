@@ -19,7 +19,7 @@ def load_model_metadata():
         }
 
 def generate_seldon_deployment(image_tag, model_version, metadata):
-    """Generate SeldonDeployment manifest with versioning info"""
+    """Generate SeldonDeployment manifest with MinIO storage"""
     
     # Get environment variables
     namespace = os.getenv("NAMESPACE", "argowf")
@@ -55,7 +55,8 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                     "graph": {
                         "name": "classifier",
                         "implementation": "SKLEARN_SERVER",
-                        "modelUri": "pvc://workdir/model",  # Seldon will handle volume mounting
+                        "modelUri": f"s3://models/{model_name}/{model_version}/",
+                        "envSecretRefName": "minio-credentials-wf",
                         "endpoint": {
                             "type": "REST"
                         }
@@ -63,6 +64,11 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                     "componentSpecs": [
                         {
                             "spec": {
+                                "imagePullSecrets": [  # Add this section
+                                    {
+                                        "name": "ghcr-credentials"
+                                    }
+                                ],
                                 "containers": [
                                     {
                                         "name": "classifier",
@@ -83,7 +89,6 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                                                 "cpu": "1"
                                             }
                                         }
-                                        # Let Seldon Core handle all the volume mounts, probes, ports automatically
                                     }
                                 ]
                             }

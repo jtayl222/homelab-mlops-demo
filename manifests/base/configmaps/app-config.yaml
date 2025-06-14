@@ -1,0 +1,13 @@
+# manifests/configmaps/app-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: argowf
+data:
+  MODEL_SERVING_PORT: "9000"
+  MODEL_METRICS_PORT: "6000"
+  MODEL_GRPC_PORT: "9500"
+  MINIO_PORT: "9000"
+  MINIO_HOST: "minio.minio.svc.cluster.local"
+  MODEL_NAME: "iris"
