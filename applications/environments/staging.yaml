@@ -1,0 +1,18 @@
+iapiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mlops-staging
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: staging  # Staging branch
+    path: manifests/overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argowf-staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

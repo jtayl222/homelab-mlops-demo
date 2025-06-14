@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mlops-production
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: main  # Only stable main branch
+    path: manifests/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argowf
+  syncPolicy:
+    automated:
+      prune: false  # Manual approval for production
+      selfHeal: false

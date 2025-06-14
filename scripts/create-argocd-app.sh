@@ -1,31 +1,33 @@
 #!/bin/bash
-# create-argocd-app.sh - ArgoCD application management ONLY
-
-set -e
 
 NAMESPACE=${1:-argowf-dev}
-BRANCH=${2:-$(git branch --show-current)}
-APP_NAME="homelab-mlops-demo-$(echo $NAMESPACE | sed 's/argowf-//')"
 
-echo "🎯 Creating ArgoCD application: $APP_NAME"
-echo "   Namespace: $NAMESPACE"
-echo "   Branch: $BRANCH"
+if [[ "$NAMESPACE" == "argowf" ]]; then
+    OVERLAY="production"
+    APP_NAME="homelab-mlops-demo"
+else
+    OVERLAY="development"
+    DEV_ENV_NAME=$(echo "$NAMESPACE" | sed 's/argowf-dev//' | sed 's/^-//')
+    if [[ -z "$DEV_ENV_NAME" ]]; then
+        DEV_ENV_NAME="dev"
+    fi
+    APP_NAME="homelab-mlops-demo-$DEV_ENV_NAME"
+fi
 
-cat > argocd-apps/${APP_NAME}.yaml << EOF
+echo "Creating ArgoCD app: $APP_NAME for namespace: $NAMESPACE"
+
+cat > /tmp/argocd-app-$APP_NAME.yaml << EOF
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: $APP_NAME
   namespace: argocd
-  labels:
-    environment: $(echo $NAMESPACE | sed 's/argowf-//')
-    branch: $(echo $BRANCH | sed 's/[^a-zA-Z0-9-]/-/g')
 spec:
   project: default
   source:
     repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
-    targetRevision: $BRANCH
-    path: .
+    targetRevision: HEAD
+    path: manifests/overlays/$OVERLAY
   destination:
     server: https://kubernetes.default.svc
     namespace: $NAMESPACE
@@ -34,10 +36,11 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-    - CreateNamespace=true
+      - CreateNamespace=true
 EOF
 
-kubectl apply -f argocd-apps/${APP_NAME}.yaml
+kubectl apply -f /tmp/argocd-app-$APP_NAME.yaml
+rm -f /tmp/argocd-app-$APP_NAME.yaml
 
-echo "✅ ArgoCD application $APP_NAME created"
-echo "📄 Configuration saved to: argocd-apps/${APP_NAME}.yaml"
+echo "✅ ArgoCD app created successfully!"
+echo "Monitor with: argocd app get $APP_NAME"

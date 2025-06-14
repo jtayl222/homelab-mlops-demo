@@ -171,13 +171,66 @@ deploy() {
         kubectl apply -k manifests/overlays/development
     fi
 
+# Replace lines 174-181 with:
+
     echo "5. Creating/updating ArgoCD application..."
     if [[ -f "$APP_MANIFEST" ]]; then
         kubectl apply -f "$APP_MANIFEST"
     else
         echo "⚠️  ArgoCD app manifest not found: $APP_MANIFEST"
-        echo "For development environments, create it with:"
-        echo "  ./scripts/create-argocd-app.sh $NAMESPACE"
+        echo "Creating ArgoCD app automatically..."
+        
+        # Create ArgoCD app dynamically
+        if [[ "$NAMESPACE" == "argowf" ]]; then
+            # Production app
+            cat > /tmp/argocd-prod-app.yaml << EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: $ARGOCD_APP
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: HEAD
+    path: manifests/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: $NAMESPACE
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOF
+            kubectl apply -f /tmp/argocd-prod-app.yaml
+            rm -f /tmp/argocd-prod-app.yaml
+        else
+            # Development app
+            cat > /tmp/argocd-dev-app.yaml << EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: $ARGOCD_APP
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: HEAD  
+    path: manifests/overlays/development
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: $NAMESPACE
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOF
+            kubectl apply -f /tmp/argocd-dev-app.yaml
+            rm -f /tmp/argocd-dev-app.yaml
+        fi
+        echo "✅ ArgoCD app created: $ARGOCD_APP"
     fi
 
     echo "6. Syncing ArgoCD..."

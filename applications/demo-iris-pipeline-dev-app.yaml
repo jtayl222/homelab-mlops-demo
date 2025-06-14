@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: homelab-mlops-demo-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: HEAD
+    path: manifests/overlays/development
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argowf-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

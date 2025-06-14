@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mlops-dev-kustomize
+  namespace: argocd
+  labels:
+    environment: development
+    branch: kustomize
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jtayl222/homelab-mlops-demo.git
+    targetRevision: kustomize  # Points to your feature branch
+    path: manifests/overlays/development
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argowf-dev-kustomize  # Branch-specific namespace
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,19 +1,27 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+namespace: argowf-dev-kustomize
+namePrefix: dev-
+
 resources:
   - ../../base
 
-namespace: argowf-dev
-
-namePrefix: dev-
-
+# Use JSON patches instead of strategic merge
 patches:
-  - path: app-config-patch.yaml
-    target:
+  - target:
       kind: ConfigMap
       name: app-config
+    patch: |-
+      - op: replace
+        path: /data/MODEL_SERVING_PORT
+        value: "9001"
+      - op: add
+        path: /data/ENVIRONMENT
+        value: "development"
+      - op: add
+        path: /data/BRANCH_NAME
+        value: "kustomize"
 
-labels:
-  - pairs:
-      environment: development
+patchesStrategicMerge:
+  - resource-limits-patch.yaml

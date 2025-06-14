@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  GIT_BRANCH: "kustomize"
+  ENVIRONMENT: "development"
+  DEPLOY_MODE: "feature-branch"
+  AUTO_SYNC: "true"
