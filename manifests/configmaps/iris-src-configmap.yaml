@@ -42,27 +42,63 @@ data:
     \               \"validation.status\": metadata.get(\"validation_results\", {}).get(\"validation_status\",
     \"unknown\")\n            }\n        },\n        \"spec\": {\n            \"name\":
     deployment_name,\n            \"predictors\": [\n                {\n                    \"name\":
-    \"default\",\n                    \"replicas\": 1,\n                    \"graph\":
-    {\n                        \"name\": \"classifier\",\n                        \"implementation\":
-    \"SKLEARN_SERVER\",\n                        \"modelUri\": \"pvc://workdir/model\",
-    \ # Seldon will handle volume mounting\n                        \"endpoint\":
-    {\n                            \"type\": \"REST\"\n                        }\n
-    \                   },\n                    \"componentSpecs\": [\n                        {\n
-    \                           \"spec\": {\n                                \"containers\":
+    \"default\",\n                    \"replicas\": 1,\n                    \"componentSpecs\":
+    [\n                        {\n                            \"spec\": {\n                                \"containers\":
     [\n                                    {\n                                        \"name\":
     \"classifier\",\n                                        \"image\": f\"ghcr.io/jtayl222/iris:{image_tag}\",\n
+    \                                       \"volumeMounts\": [\n                                            {\n
+    \                                               \"name\": \"classifier-provision-location\",\n
+    \                                               \"mountPath\": \"/mnt/models\"\n
+    \                                           }\n                                        ],\n
+    \                                       \"ports\": [\n                                            {\"containerPort\":
+    8080, \"name\": \"http\", \"protocol\": \"TCP\"},  # Change from 9000 to 8080\n
+    \                                           {\"containerPort\": 9500, \"name\":
+    \"grpc\", \"protocol\": \"TCP\"}\n                                        ],\n
     \                                       \"env\": [\n                                            {\n
     \                                               \"name\": \"MODEL_VERSION\",\n
-    \                                               \"value\": model_version\n                                            }\n
-    \                                       ],\n                                        \"resources\":
-    {\n                                            \"requests\": {\n                                                \"memory\":
-    \"1Gi\",\n                                                \"cpu\": \"500m\"\n
-    \                                           },\n                                            \"limits\":
+    \                                               \"value\": model_version\n                                            },\n
+    \                                           {\"name\": \"MLSERVER_HTTP_PORT\",
+    \"value\": \"8080\"}  # Change from 9000 to 8080\n                                        ],\n
+    \                                       \"resources\": {\n                                            \"requests\":
+    {\n                                                \"memory\": \"1Gi\",\n                                                \"cpu\":
+    \"500m\"\n                                            },\n                                            \"limits\":
     {\n                                                \"memory\": \"2Gi\",\n                                                \"cpu\":
     \"1\"\n                                            }\n                                        }\n
-    \                                       # Let Seldon Core handle all the volume
-    mounts, probes, ports automatically\n                                    }\n                                ]\n
-    \                           }\n                        }\n                    ]\n
+    \                                   }\n                                ],\n                                \"initContainers\":
+    [\n                                    {\n                                        \"name\":
+    \"classifier-model-initializer\",\n                                        \"image\":
+    \"seldonio/rclone-storage-initializer:1.17.1\",\n                                        \"args\":
+    [\n                                            \"s3:models/iris/\" + model_version,
+    \ # SOURCE\n                                            \"/mnt/models\"                       #
+    DESTINATION\n                                        ],\n                                        \"volumeMounts\":
+    [\n                                            {\n                                                \"name\":
+    \"classifier-provision-location\",\n                                                \"mountPath\":
+    \"/mnt/models\"\n                                            },\n                                            {\n
+    \                                               \"name\": \"rclone-config\",\n
+    \                                               \"mountPath\": \"/config/rclone\",\n
+    \                                               \"readOnly\": True\n                                            }\n
+    \                                       ],\n                                        \"env\":
+    [\n                                            {\n                                                \"name\":
+    \"RCLONE_CONFIG\",\n                                                \"value\":
+    \"/config/rclone/rclone.conf\"\n                                            }\n
+    \                                       ],\n                                        \"resources\":
+    {\n                                            \"requests\": {\n                                                \"memory\":
+    \"100Mi\"\n                                            },\n                                            \"limits\":
+    {\n                                                \"memory\": \"1Gi\"\n                                            }\n
+    \                                       }\n                                    }\n
+    \                               ],\n                                \"volumes\":
+    [\n                                    {\n                                        \"name\":
+    \"classifier-provision-location\",\n                                        \"emptyDir\":
+    {}\n                                    },\n                                    {\n
+    \                                       \"name\": \"rclone-config\",\n                                        \"secret\":
+    {\n                                            \"secretName\": \"rclone-config\"\n
+    \                                       }\n                                    }\n
+    \                               ]\n                            }\n                        }\n
+    \                   ],\n                    \"graph\": {\n                        \"name\":
+    \"classifier\",\n                        \"type\": \"MODEL\",\n                        \"parameters\":
+    [\n                            {\n                                \"name\": \"model_uri\",\n
+    \                               \"value\": \"/mnt/models\",\n                                \"type\":
+    \"STRING\"\n                            }\n                        ]\n                    }\n
     \               }\n            ]\n        }\n    }\n    \n    return seldon_deployment\n\ndef
     cleanup_old_deployments(current_version, namespace=\"argowf\"):\n    \"\"\"Clean
     up old deployment versions (keep last 3)\"\"\"\n    try:\n        import subprocess\n

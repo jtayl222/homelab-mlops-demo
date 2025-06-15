@@ -52,14 +52,6 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                 {
                     "name": "default",
                     "replicas": 1,
-                    "graph": {
-                        "name": "classifier",
-                        "implementation": "SKLEARN_SERVER",
-                        "modelUri": "pvc://workdir/model",  # Seldon will handle volume mounting
-                        "endpoint": {
-                            "type": "REST"
-                        }
-                    },
                     "componentSpecs": [
                         {
                             "spec": {
@@ -67,11 +59,22 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                                     {
                                         "name": "classifier",
                                         "image": f"ghcr.io/jtayl222/iris:{image_tag}",
+                                        "volumeMounts": [
+                                            {
+                                                "name": "classifier-provision-location",
+                                                "mountPath": "/mnt/models"
+                                            }
+                                        ],
+                                        "ports": [
+                                            {"containerPort": 8080, "name": "http", "protocol": "TCP"},  # Change from 9000 to 8080
+                                            {"containerPort": 9500, "name": "grpc", "protocol": "TCP"}
+                                        ],
                                         "env": [
                                             {
                                                 "name": "MODEL_VERSION",
                                                 "value": model_version
-                                            }
+                                            },
+                                            {"name": "MLSERVER_HTTP_PORT", "value": "8080"}  # Change from 9000 to 8080
                                         ],
                                         "resources": {
                                             "requests": {
@@ -83,12 +86,69 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                                                 "cpu": "1"
                                             }
                                         }
-                                        # Let Seldon Core handle all the volume mounts, probes, ports automatically
+                                    }
+                                ],
+                                "initContainers": [
+                                    {
+                                        "name": "classifier-model-initializer",
+                                        "image": "seldonio/rclone-storage-initializer:1.17.1",
+                                        "args": [
+                                            "s3:models/iris/" + model_version,  # SOURCE
+                                            "/mnt/models"                       # DESTINATION
+                                        ],
+                                        "volumeMounts": [
+                                            {
+                                                "name": "classifier-provision-location",
+                                                "mountPath": "/mnt/models"
+                                            },
+                                            {
+                                                "name": "rclone-config",
+                                                "mountPath": "/config/rclone",
+                                                "readOnly": True
+                                            }
+                                        ],
+                                        "env": [
+                                            {
+                                                "name": "RCLONE_CONFIG",
+                                                "value": "/config/rclone/rclone.conf"
+                                            }
+                                        ],
+                                        "resources": {
+                                            "requests": {
+                                                "memory": "100Mi"
+                                            },
+                                            "limits": {
+                                                "memory": "1Gi"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "volumes": [
+                                    {
+                                        "name": "classifier-provision-location",
+                                        "emptyDir": {}
+                                    },
+                                    {
+                                        "name": "rclone-config",
+                                        "secret": {
+                                            "secretName": "rclone-config"
+                                        }
                                     }
                                 ]
                             }
                         }
-                    ]
+                    ],
+                    "graph": {
+                        "name": "classifier",
+                        "type": "MODEL",
+                        "parameters": [
+                            {
+                                "name": "model_uri",
+                                "value": "/mnt/models",
+                                "type": "STRING"
+                            }
+                        ]
+                    }
                 }
             ]
         }
