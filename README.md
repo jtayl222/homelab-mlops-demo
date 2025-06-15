@@ -10,6 +10,9 @@ A comprehensive, enterprise-grade MLOps platform demonstrating modern DevOps pra
 
 ## 🔄 Production ML Pipeline in Action
 
+![Argo Workflows Pipeline](docs/screenshots/ArgoWF.png)
+*Complete ML pipeline orchestration with automatic dependency management and distributed execution*
+
 This platform orchestrates a complete ML lifecycle in **under 10 minutes**:
 
 | Step | Duration | Production Pattern | Enterprise Value | Implementation |
@@ -22,6 +25,20 @@ This platform orchestrates a complete ML lifecycle in **under 10 minutes**:
 | **🚀 Deploy** | 5m | Blue-green deployments with rollback | Zero-downtime production updates | → [`deploy_model.py`](demo_iris_pipeline/src/deploy_model.py) |
 
 > **Platform Engineering Focus**: Each step demonstrates production MLOps patterns that scale from single experiments to organization-wide ML platforms serving millions of predictions daily.
+
+## 📊 Live Platform Dashboards
+
+### **GitOps Deployment Management**
+![ArgoCD Dashboard](docs/screenshots/ArgoCD.png)
+*Automated GitOps deployment with health monitoring and rollback capabilities*
+
+### **Kubernetes Infrastructure Overview**
+![Kubernetes Dashboard](docs/screenshots/kubernetes-dashboard.png)
+*Production-ready container orchestration with resource monitoring and scaling*
+
+### **Production API Documentation**
+![FastAPI Swagger Interface](docs/screenshots/FastAPI-OpenAPI-Swagger.png)
+*Interactive API documentation with schema validation and live testing capabilities*
 
 ## 🎯 The Infrastructure is the Product
 
@@ -101,6 +118,9 @@ graph TB
 
 ### **🎯 MLflow: Enterprise Model Lifecycle Management**
 
+![MLflow Experiment Tracking](docs/screenshots/mlflow-experiments.png)
+*Comprehensive experiment tracking with hyperparameter optimization and model comparison*
+
 > **Automated Experiment Tracking**: Every model training run automatically logs hyperparameters, performance metrics, and model artifacts to MLflow for complete reproducibility and compliance audit trails essential for regulated industries. → [`train.py`](demo_iris_pipeline/src/train.py#L15-L25)
 
 > **Production Model Registry**: Automated model promotion pipeline with staging environments and approval workflows ensures only validated models reach production, reducing deployment risk by 90%. → [`deploy_model.py`](demo_iris_pipeline/src/deploy_model.py#L45-L65)
@@ -130,6 +150,20 @@ graph TB
 > **Multi-Stage Optimization**: Automatic layer caching and image optimization reduces container size by 60% and build times by 40%, accelerating deployment cycles. → [`Dockerfile`](demo_iris_pipeline/src/Dockerfile)
 
 **Production Impact**: Supply chain security compliance with automated vulnerability scanning and provenance tracking.
+
+## 📈 Production Monitoring & Observability
+
+### **Real-time Performance Metrics**
+![Grafana Dashboard](docs/screenshots/Grafana-argowf.png)
+*Comprehensive monitoring with custom metrics, alerting, and business KPI tracking*
+
+> **Advanced Monitoring Stack**: Prometheus metrics collection with Grafana visualization provides real-time insights into model performance, infrastructure health, and business impact metrics for complete operational visibility. → [`monitor.py`](demo_iris_pipeline/src/monitor.py)
+
+**Observability Features**:
+- **Model Drift Detection**: Automated statistical analysis of input data distribution
+- **Performance Degradation Alerts**: Custom thresholds for accuracy, latency, and throughput  
+- **Business Impact Tracking**: Revenue attribution and conversion rate monitoring
+- **Infrastructure Health**: Resource utilization, pod health, and service availability
 
 ## 🏭 Production Complexity: Beyond the Demo
 
@@ -224,7 +258,7 @@ Actually demonstrates mastery of:
 
 ## 📞 Enterprise Discussion
 
-**These MLOps patterns can accelerate your organization's AI initiatives?**
+**These MLOps patterns can accelerate your organization's AI initiatives.**
 
 This platform showcases production-ready capabilities that have been battle-tested in enterprise environments. The patterns demonstrated here directly address the operational challenges that prevent ML teams from moving from prototype to production at scale.
 
