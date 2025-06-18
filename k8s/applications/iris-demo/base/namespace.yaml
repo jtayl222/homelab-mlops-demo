@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iris-demo
+  labels:
+    app.kubernetes.io/name: iris-demo
+    app.kubernetes.io/part-of: ml-platform
+    environment: development
+  annotations:
+    description: "Iris classification ML pipeline demo"
+    owner: "ml-platform-team"

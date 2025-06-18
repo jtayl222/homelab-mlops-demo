@@ -17,3 +17,6 @@ labels:
 commonAnnotations:
   deployment.environment: development
   managed.by: kustomize
+
+configurations:
+- name-reference.yaml

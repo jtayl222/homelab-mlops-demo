@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: iris-demo
+spec:
+  templates:
+  - name: train # Key to merge with the 'train' template
+    container:
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+  - name: kaniko # Key to merge with the 'kaniko' template
+    container:
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+  - name: model-validation # Key to merge with the 'model-validation' template
+    container:
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "500m"
+          memory: "1Gi"

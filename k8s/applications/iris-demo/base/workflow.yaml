@@ -1,0 +1,440 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: iris-demo
+  namespace: iris-demo
+spec:
+  serviceAccountName: argo-workflow
+  entrypoint: iris-pipeline
+  # Add volumes at workflow level
+  volumes:
+  - name: src
+    configMap:
+      name: iris-src
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      storageClassName: nfs-shared
+      accessModes: [ReadWriteMany]
+      resources:
+        requests:
+          storage: 1Gi
+  templates:
+  - name: iris-pipeline
+    dag:
+      tasks:
+      - name: train
+        template: train
+      
+      - name: validate
+        template: model-validation
+        dependencies: [train]
+      
+      - name: semantic-versioning
+        template: semantic-versioning
+        dependencies: [validate]  # Move this to depend on validate directly
+    
+      - name: monitor-validate  # Move monitoring after versioning
+        template: monitor
+        arguments:
+          parameters:
+          - name: model-version
+            value: "{{tasks.semantic-versioning.outputs.parameters.model-version}}"
+          - name: pipeline-stage
+            value: "validate"
+        dependencies: [semantic-versioning]
+      
+      - name: kaniko
+        template: kaniko
+        arguments:
+          parameters:
+          - name: version-tag
+            value: "{{tasks.semantic-versioning.outputs.parameters.version-tag}}"
+        dependencies: [monitor-validate]  # Update dependency
+    
+      - name: deploy
+        template: deploy
+        arguments:
+          parameters:
+          - name: image-tag
+            value: "{{tasks.semantic-versioning.outputs.parameters.version-tag}}"
+          - name: model-version
+            value: "{{tasks.semantic-versioning.outputs.parameters.model-version}}"
+        dependencies: [kaniko]
+      
+      - name: monitor-deploy
+        template: monitor
+        arguments:
+          parameters:
+          - name: model-version
+            value: "{{tasks.semantic-versioning.outputs.parameters.model-version}}"
+          - name: pipeline-stage
+            value: "deploy"
+        dependencies: [deploy]
+
+  - name: train
+    container:
+      image: jupyter/scipy-notebook:python-3.11
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # Fix permissions on the output directory
+          set -x
+          mount
+          df -h /output
+          chown -R 1000:100 /output
+          
+          # Switch to jovyan user with proper environment
+          su jovyan -c "
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate base
+          pip uninstall -y backports.tarfile
+          pip install backports.tarfile
+          pip install setuptools==78.1.0 boto3==1.37.34
+          cp /src/requirements.txt /tmp/requirements.txt
+          pip install -r /tmp/requirements.txt
+          pip install scikit-learn==1.5.1 numpy pandas
+          python /src/train.py
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /output
+      - name: src
+        mountPath: /src
+      env:
+      - name: MLFLOW_TRACKING_URI
+        value: "http://mlflow.mlflow.svc.cluster.local:5000"
+      - name: GIT_PYTHON_REFRESH
+        value: "quiet"
+      envFrom:
+      - secretRef:
+          name: minio-credentials-wf
+
+  - name: kaniko
+    inputs:
+      parameters:
+      - name: version-tag
+    outputs:
+      parameters:
+      - name: image-tag
+        valueFrom:
+          path: /workspace/image_tag.txt
+    container:
+      image: gcr.io/kaniko-project/executor:v1.23.0
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      args:
+      - --context=/workspace
+      - --dockerfile=/workspace/Dockerfile
+      - --destination=ghcr.io/jtayl222/iris:{{inputs.parameters.version-tag}}
+      - --destination=ghcr.io/jtayl222/iris:latest  # Always tag latest too
+      - --push-retry=5
+      - --verbosity=debug
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
+      - name: workdir
+        mountPath: /output
+      - name: docker-config
+        mountPath: /kaniko/.docker
+        readOnly: true
+      env:
+      - name: DOCKER_CONFIG
+        value: /kaniko/.docker
+    volumes:
+    - name: docker-config
+      secret:
+        secretName: ghcr-credentials
+        items:
+        - key: .dockerconfigjson
+          path: config.json
+    initContainers:
+    - name: prepare-workspace
+      image: busybox
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      command: ["/bin/sh", "-c"]
+      args:
+      - |
+        # Copy Dockerfile and model to workspace
+        cp /src/Dockerfile /workspace/
+        cp /src/requirements.txt /workspace/
+        
+        # Debug output to check if model exists in output directory
+        echo "Listing output directory:"
+        ls -la /output
+        echo "Listing output/model directory:"
+        ls -la /tmp/model || echo "No model directory in output"
+        
+        # Make sure model directory exists in workspace
+        mkdir -p /workspace/model
+        
+        # Copy model from output volume
+        if [ -f "/output/model/model.pkl" ]; then
+          cp /output/model/model.pkl /workspace/model/
+        else
+          echo "Model file not found in expected locations"
+          find /output -name "model.pkl" -type f
+          exit 1
+        fi
+        
+        cp /src/serve.py /workspace/
+        
+        # Use version tag from versioning step
+        TAG="{{inputs.parameters.version-tag}}"
+        echo "Using version tag: $TAG"
+        
+        # Save tag for output parameter
+        echo "$TAG" > /workspace/image_tag.txt
+        
+        echo "Final workspace contents:"
+        ls -la /workspace
+        ls -la /workspace/model || echo "No model directory in workspace"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
+      - name: workdir
+        mountPath: /output
+
+  - name: model-validation
+    outputs:
+      parameters:
+      - name: validation-status
+        valueFrom:
+          path: /workspace/validation_results.json  # Changed from /output
+    container:
+      image: python:3.12-slim
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace  # Only mount workdir once
+      - name: src
+        mountPath: /src
+      command: [sh, -c]
+      args:
+      - |
+        cd /workspace
+        
+        # Install dependencies
+        pip install scikit-learn==1.5.1 numpy pandas
+        
+        # Debug: Check what files exist
+        echo "Files in /workspace:"
+        ls -la /workspace/
+        
+        # Check if model exists in model subdirectory (from train step)
+        if [ -f "/workspace/model/model.pkl" ]; then
+          echo "✅ Model found at /workspace/model/model.pkl"
+          export MODEL_PATH=/workspace/model/model.pkl
+        elif [ -f "/workspace/model.pkl" ]; then
+          echo "✅ Model found at /workspace/model.pkl"
+          export MODEL_PATH=/workspace/model.pkl
+        else
+          echo "❌ Model not found"
+          echo "Available files:"
+          find /workspace -name "*.pkl" -type f
+          exit 1
+        fi
+        
+        # Copy and run validation script
+        cp /src/test_model.py .
+        
+        # Set environment variables for validation script
+        export OUTPUT_PATH=/workspace/validation_results.json
+        
+        python test_model.py
+        
+        echo "Model validation completed"
+
+  - name: semantic-versioning
+    outputs:
+      parameters:
+      - name: model-version
+        valueFrom:
+          path: /workspace/model_version.txt
+      - name: version-tag
+        valueFrom:
+          path: /workspace/version_tag.txt
+    container:
+      image: python:3.12-slim
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
+      command: [sh, -c]
+      args:
+      - |
+        cd /workspace
+        
+        # Install dependencies
+        pip install requests semver
+        
+        # Copy versioning script
+        cp /src/version_model.py .
+        
+        # Set environment variables
+        export VALIDATION_RESULTS_PATH=/workspace/validation_results.json
+        export OUTPUT_PATH=/workspace/model_version.txt
+        export VERSION_TAG_PATH=/workspace/version_tag.txt
+        
+        # Run versioning logic
+        python version_model.py
+        
+        echo "Model versioning completed"
+        
+        # Show results
+        echo "Model Version: $(cat /workspace/model_version.txt)"
+        echo "Version Tag: $(cat /workspace/version_tag.txt)"
+
+  # Alternative approach using a container with both tools:
+
+  - name: deploy
+    inputs:
+      parameters:
+      - name: image-tag
+      - name: model-version
+    container:
+      image: python:3.12-slim
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      command: [sh, -c]
+      args:
+      - |
+        set -e  # Exit on any error
+        
+        # Install system dependencies
+        apt-get update && apt-get install -y curl
+        
+        # Install kubectl
+        echo "📦 Installing kubectl..."
+        KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        mv kubectl /usr/local/bin/
+        
+        # Install Python packages
+        pip install pyyaml
+        
+        # Copy deployment script
+        cp /src/deploy_model.py /workspace/
+        
+        cd /workspace
+        
+        # Set environment variables
+        export IMAGE_TAG={{inputs.parameters.image-tag}}
+        export MODEL_VERSION={{inputs.parameters.model-version}}
+        export NAMESPACE=argowf
+        export MODEL_NAME=iris
+        
+        # Verify kubectl works
+        kubectl version --client
+        
+        # Debug: Show environment
+        echo "🔍 Environment:"
+        echo "IMAGE_TAG: $IMAGE_TAG"
+        echo "MODEL_VERSION: $MODEL_VERSION"
+        echo "NAMESPACE: $NAMESPACE"
+        
+        # Run deployment
+        echo "🚀 Running deployment script..."
+        python deploy_model.py
+        
+        echo "✅ Deployment completed successfully"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
+
+  - name: monitor
+    inputs:
+      parameters:
+      - name: model-version
+      - name: pipeline-stage
+    container:
+      image: python:3.12-slim
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+      command: [sh, -c]
+      args:
+      - |
+        set -e
+        
+        echo "📊 Starting monitoring for stage {{inputs.parameters.pipeline-stage}}..."
+        
+        # Install monitoring dependencies
+        pip install prometheus-client requests mlflow
+        
+        # Copy monitoring script
+        cp /src/monitor_model.py /workspace/
+        
+        cd /workspace
+        
+        # Set environment variables
+        export MODEL_VERSION={{inputs.parameters.model-version}}
+        export PIPELINE_STAGE={{inputs.parameters.pipeline-stage}}
+        export NAMESPACE=argowf
+        export PUSHGATEWAY_URL=http://prometheus-pushgateway.monitoring.svc.cluster.local:9091
+        export VALIDATION_RESULTS_PATH=/workspace/validation_results.json
+        export PIPELINE_METRICS_PATH=/workspace/pipeline_metrics.json
+        
+        # Run monitoring
+        python monitor_model.py
+        
+        echo "✅ Monitoring completed for {{inputs.parameters.pipeline-stage}}"
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: src
+        mountPath: /src
+
+

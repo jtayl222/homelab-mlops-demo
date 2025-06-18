@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow
+  namespace: iris-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: iris-demo
+  name: workflow-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["argoproj.io"]
+  resources: ["workflows", "workflowtemplates"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workflow-binding
+  namespace: iris-demo
+subjects:
+- kind: ServiceAccount
+  name: argo-workflow
+  namespace: iris-demo
+roleRef:
+  kind: Role
+  name: workflow-role
+  apiGroup: rbac.authorization.k8s.io

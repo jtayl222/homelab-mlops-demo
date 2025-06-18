@@ -195,23 +195,39 @@ graph TB
 ### **Prerequisites**
 - Kubernetes cluster (K3s/EKS/GKE)
 - ArgoCD installed
+- Argo Workflows installed
+- Container registry access (GitHub Container Registry)
 - Basic familiarity with kubectl
+
+### **Setup Secrets**
+```bash
+# 1. Copy example files and customize
+cp k8s/applications/iris-demo/base/minio-credentials-wf.yaml.example \
+   k8s/applications/iris-demo/base/minio-credentials-wf.yaml
+
+cp k8s/applications/iris-demo/base/ghcr-credentials.yaml.example \
+   k8s/applications/iris-demo/base/ghcr-credentials.yaml
+
+# 2. Edit with your credentials
+# Update minio-credentials-wf.yaml with your MinIO credentials
+# Update ghcr-credentials.yaml with your container registry token
+```
 
 ### **1-Minute Demo**
 ```bash
 # Clone and setup
-git clone https://github.com/jtayl222/homelab-mlops-demo.git
-cd homelab-mlops-demo
+git clone https://github.com/jtayl222/homelab-mlops-demo-June13.git
+cd homelab-mlops-demo-June13
 
-# Deploy infrastructure
-kubectl apply -f manifests/rbac/
-./scripts/update-configmap.sh argowf
+# Deploy the dev overlay (creates namespace, RBAC, ConfigMap, Secrets, Workflow)
+kubectl apply -k k8s/applications/iris-demo/overlays/dev
 
-# Run complete ML pipeline
-argo submit manifests/workflows/iris-workflow.yaml -n argowf --watch
+# Run the complete ML pipeline in the iris-demo namespace
+argo submit k8s/applications/iris-demo/base/workflow.yaml \
+  -n iris-demo --watch
 ```
 
-**Expected Results**: Complete ML pipeline (train → validate → deploy) in <10 minutes with live model endpoint.
+**Expected Results**: You’ll see the end-to-end ML pipeline (train → validate → build → deploy) complete in under 10 minutes, with a live Seldon endpoint serving the Iris model in the iris-demo namespace.
 
 ## 📊 Platform Metrics & Business Impact
 

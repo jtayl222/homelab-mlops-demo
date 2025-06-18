@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: workflow-role
+  namespace: iris-demo
+rules:
+- apiGroups: ["argoproj.io"]
+  resources: ["workflowtaskresults"]
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - update
+  - patch
+  - delete
