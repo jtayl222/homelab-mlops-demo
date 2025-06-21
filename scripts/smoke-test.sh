@@ -1,9 +1,9 @@
 # Quick smoke test of deployed model
-DEPLOYMENT_NAME=$(kubectl get seldondeployments -n argowf -o name | head -1 | cut -d'/' -f2)
+DEPLOYMENT_NAME=$(kubectl get seldondeployments -n iris-demp -o name | head -1 | cut -d'/' -f2)
 
 if [ ! -z "$DEPLOYMENT_NAME" ]; then
   # Port forward and test prediction
-  kubectl port-forward -n argowf svc/${DEPLOYMENT_NAME}-default 8080:8080 &
+  kubectl port-forward -n iris-demp svc/${DEPLOYMENT_NAME}-default 8080:8080 &
   sleep 5
   
   # Send test request

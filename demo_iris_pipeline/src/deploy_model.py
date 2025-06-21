@@ -2,6 +2,7 @@ import os
 import json
 import yaml
 from datetime import datetime
+import subprocess
 
 def load_model_metadata():
     """Load model metadata from versioning step"""
@@ -22,7 +23,7 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
     """Generate SeldonDeployment manifest with versioning info"""
     
     # Get environment variables
-    namespace = os.getenv("NAMESPACE", "argowf")
+    namespace = os.getenv('DEPLOYMENT_NAMESPACE', 'iris-demo')
     model_name = os.getenv("MODEL_NAME", "iris")
     
     # Create deployment name with version
@@ -93,8 +94,8 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                                         "name": "classifier-model-initializer",
                                         "image": "seldonio/rclone-storage-initializer:1.17.1",
                                         "args": [
-                                            "s3:models/iris/" + model_version,  # SOURCE
-                                            "/mnt/models"                       # DESTINATION
+                                            "mlflow-artifacts:mlflow-artifacts/16/b3e9c966addd4b41a7409184cb0d916a/artifacts/model",  # SOURCE (update with your real path)
+                                            "/mnt/models"                                   # DESTINATION
                                         ],
                                         "volumeMounts": [
                                             {
@@ -156,11 +157,9 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
     
     return seldon_deployment
 
-def cleanup_old_deployments(current_version, namespace="argowf"):
+def cleanup_old_deployments(current_version, namespace="iris-demo"):
     """Clean up old deployment versions (keep last 3)"""
     try:
-        import subprocess
-        
         # Get all SeldonDeployments for this model
         result = subprocess.run([
             "kubectl", "get", "seldondeployments", "-n", namespace,
@@ -195,18 +194,15 @@ def save_deployment_manifest(seldon_deployment):
     print(f"✅ Seldon deployment manifest saved to {output_path}")
     return output_path
 
-def main():
-    """Main deployment logic"""
-    print("🚀 Starting Model Deployment...")
+def deploy_model():
+    """Deploy model using environment variables from workflow"""
+    image_tag = os.environ['IMAGE_TAG']
+    model_version = os.environ['MODEL_VERSION']
+    namespace = os.environ.get('NAMESPACE', 'iris-demo')
+    
+    print(f"🚀 Deploying {image_tag} version {model_version} to {namespace}")
     
     try:
-        # Get inputs from environment or workflow parameters
-        image_tag = os.getenv("IMAGE_TAG", "latest")
-        model_version = os.getenv("MODEL_VERSION", "0.1.0")
-        
-        print(f"📦 Image Tag: {image_tag}")
-        print(f"🏷️ Model Version: {model_version}")
-        
         # Load model metadata
         metadata = load_model_metadata()
         print(f"📊 Model Accuracy: {metadata.get('performance_metrics', {}).get('accuracy', 'unknown')}")
@@ -218,7 +214,6 @@ def main():
         manifest_path = save_deployment_manifest(seldon_deployment)
         
         # Apply deployment
-        import subprocess
         print("🎯 Applying SeldonDeployment...")
         
         result = subprocess.run([
@@ -239,7 +234,7 @@ def main():
             subprocess.run([
                 "kubectl", "wait", "--for=condition=Ready", 
                 f"seldondeployment/{deployment_name}",
-                "-n", os.getenv("NAMESPACE", "argowf"),
+                "-n", os.getenv("NAMESPACE", "iris-demo"),
                 "--timeout=300s"
             ])
             
@@ -254,4 +249,4 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
-    main()
+    deploy_model()

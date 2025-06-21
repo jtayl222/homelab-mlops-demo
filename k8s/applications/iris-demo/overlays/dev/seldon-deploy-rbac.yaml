@@ -2,12 +2,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: deploy-seldondeployments
-  namespace: argowf
+  namespace: iris-demo
 rules:
-- apiGroups:
-  - machinelearning.seldon.io
-  resources:
-  - seldondeployments
+- apiGroups: ["machinelearning.seldon.io"]
+  resources: ["seldondeployments"]
   verbs:
   - get
   - list
@@ -21,7 +19,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: bind-deploy-seldondeployments
-  namespace: argowf
+  namespace: iris-demo
 subjects:
 - kind: ServiceAccount
   name: argo-workflow

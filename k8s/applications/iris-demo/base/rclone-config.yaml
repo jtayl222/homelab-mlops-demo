@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rclone-config
+  namespace: iris-demo  # or argowf, depending on where you deploy
+type: Opaque
+stringData:
+  rclone.conf: |
+    [mlflow-artifacts]
+    type = s3
+    provider = Minio
+    access_key_id = minioadmin
+    secret_access_key = minioadmin123
+    endpoint = http://minio.minio.svc.cluster.local:9000
+    region = us-east-1

@@ -119,7 +119,9 @@ spec:
         value: "quiet"
       envFrom:
       - secretRef:
-          name: minio-credentials-wf
+          name: iris-demo-minio
+      - secretRef:
+          name: iris-demo-mlflow       
 
   - name: kaniko
     inputs:
@@ -143,16 +145,12 @@ spec:
       - --context=/workspace
       - --dockerfile=/workspace/Dockerfile
       - --destination=ghcr.io/jtayl222/iris:{{inputs.parameters.version-tag}}
-      - --destination=ghcr.io/jtayl222/iris:latest  # Always tag latest too
+      - --destination=ghcr.io/jtayl222/iris:latest
       - --push-retry=5
       - --verbosity=debug
       volumeMounts:
       - name: workdir
         mountPath: /workspace
-      - name: src
-        mountPath: /src
-      - name: workdir
-        mountPath: /output
       - name: docker-config
         mountPath: /kaniko/.docker
         readOnly: true
@@ -168,7 +166,7 @@ spec:
           path: config.json
     initContainers:
     - name: prepare-workspace
-      image: busybox
+      image: python:3.12-slim
       resources:
         requests:
           memory: "2Gi"
@@ -176,43 +174,35 @@ spec:
         limits:
           memory: "4Gi"
           cpu: "2"
-      command: ["/bin/sh", "-c"]
+      command: ["/bin/bash", "-c"]
       args:
       - |
-        # Copy Dockerfile and model to workspace
+        set -e
+        echo "🔧 Preparing workspace for kaniko..."
+        
+        # Install dependencies
+        pip install mlflow boto3 scikit-learn
+        
+        # Copy basic files from source
         cp /src/Dockerfile /workspace/
         cp /src/requirements.txt /workspace/
-        
-        # Debug output to check if model exists in output directory
-        echo "Listing output directory:"
-        ls -la /output
-        echo "Listing output/model directory:"
-        ls -la /tmp/model || echo "No model directory in output"
-        
-        # Make sure model directory exists in workspace
-        mkdir -p /workspace/model
-        
-        # Copy model from output volume
-        if [ -f "/output/model/model.pkl" ]; then
-          cp /output/model/model.pkl /workspace/model/
-        else
-          echo "Model file not found in expected locations"
-          find /output -name "model.pkl" -type f
-          exit 1
-        fi
-        
         cp /src/serve.py /workspace/
+        cp /src/prepare_build.py /workspace/
         
-        # Use version tag from versioning step
-        TAG="{{inputs.parameters.version-tag}}"
-        echo "Using version tag: $TAG"
+        # Set environment
+        export MLFLOW_TRACKING_URI=http://mlflow.mlflow.svc.cluster.local:5000
         
-        # Save tag for output parameter
-        echo "$TAG" > /workspace/image_tag.txt
+        # Run the Python script to handle model preparation
+        cd /workspace
+        python prepare_build.py
         
-        echo "Final workspace contents:"
-        ls -la /workspace
-        ls -la /workspace/model || echo "No model directory in workspace"
+        # Create the image tag file for kaniko output
+        echo "{{inputs.parameters.version-tag}}" > /workspace/image_tag.txt
+        echo "✅ Image tag saved: $(cat /workspace/image_tag.txt)"
+        
+        echo "📁 Final workspace contents:"
+        ls -la /workspace/
+        ls -la /workspace/model/ 2>/dev/null || echo "No model directory"
       volumeMounts:
       - name: workdir
         mountPath: /workspace
@@ -220,13 +210,21 @@ spec:
         mountPath: /src
       - name: workdir
         mountPath: /output
+      env:
+      - name: MLFLOW_TRACKING_URI
+        value: "http://mlflow.mlflow.svc.cluster.local:5000"
+      envFrom:
+      - secretRef:
+          name: iris-demo-minio
+      - secretRef:
+          name: iris-demo-mlflow
 
   - name: model-validation
     outputs:
       parameters:
       - name: validation-status
         valueFrom:
-          path: /workspace/validation_results.json  # Changed from /output
+          path: /workspace/validation_results.json
     container:
       image: python:3.12-slim
       resources:
@@ -238,7 +236,7 @@ spec:
           cpu: "2"
       volumeMounts:
       - name: workdir
-        mountPath: /workspace  # Only mount workdir once
+        mountPath: /workspace
       - name: src
         mountPath: /src
       command: [sh, -c]
@@ -246,24 +244,21 @@ spec:
       - |
         cd /workspace
         
-        # Install dependencies
-        pip install scikit-learn==1.5.1 numpy pandas
+        # Install dependencies including MLflow
+        pip install scikit-learn==1.5.1 numpy pandas mlflow boto3
         
         # Debug: Check what files exist
         echo "Files in /workspace:"
         ls -la /workspace/
         
-        # Check if model exists in model subdirectory (from train step)
-        if [ -f "/workspace/model/model.pkl" ]; then
-          echo "✅ Model found at /workspace/model/model.pkl"
-          export MODEL_PATH=/workspace/model/model.pkl
-        elif [ -f "/workspace/model.pkl" ]; then
-          echo "✅ Model found at /workspace/model.pkl"
-          export MODEL_PATH=/workspace/model.pkl
+        # Check for model_info.json from training step
+        if [ -f "/workspace/model_info.json" ]; then
+          echo "✅ Model info found at /workspace/model_info.json"
+          cat /workspace/model_info.json
         else
-          echo "❌ Model not found"
+          echo "❌ Model info not found"
           echo "Available files:"
-          find /workspace -name "*.pkl" -type f
+          find /workspace -name "*.json" -type f
           exit 1
         fi
         
@@ -272,10 +267,23 @@ spec:
         
         # Set environment variables for validation script
         export OUTPUT_PATH=/workspace/validation_results.json
+        export MLFLOW_TRACKING_URI=http://mlflow.mlflow.svc.cluster.local:5000
+        
+        # Set MLflow credentials if needed
+        export AWS_ACCESS_KEY_ID=minioadmin
+        export AWS_SECRET_ACCESS_KEY=minioadmin123
         
         python test_model.py
         
         echo "Model validation completed"
+      env:
+      - name: MLFLOW_TRACKING_URI
+        value: "http://mlflow.mlflow.svc.cluster.local:5000"
+      envFrom:
+      - secretRef:
+          name: iris-demo-mlflow
+      - secretRef:
+          name: iris-demo-minio
 
   - name: semantic-versioning
     outputs:

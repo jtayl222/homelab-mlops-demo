@@ -57,7 +57,7 @@ if [ $ROLES -gt 0 ] && [ $ROLEBINDINGS -gt 0 ]; then
 fi
 CHECKS=$((CHECKS + 1))
 
-if kubectl get secret minio-credentials-wf -n $NAMESPACE >/dev/null 2>&1; then
+if kubectl get secret iris-demo-mlflow -n $NAMESPACE >/dev/null 2>&1; then
   PASSED=$((PASSED + 1))
 fi
 CHECKS=$((CHECKS + 1))

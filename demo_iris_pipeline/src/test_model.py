@@ -1,21 +1,25 @@
-import pickle
-import numpy as np
 import json
-import os
+import mlflow
+import mlflow.sklearn
+import numpy as np
 from sklearn.datasets import load_iris
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
+import os
 
 def load_model(model_path=None):
-    """Load the trained model"""
-    # Check environment variable first, then fall back to parameter or default
-    if model_path is None:
-        model_path = os.getenv("MODEL_PATH", "/model/model.pkl")
-    
-    print(f"Loading model from: {model_path}")  # Debug info
-    
-    with open(model_path, "rb") as f:
-        return pickle.load(f)
+    """Load model from MLflow using model_info.json"""
+    if os.path.exists('/workspace/model_info.json'):
+        with open('/workspace/model_info.json', 'r') as f:
+            model_info = json.load(f)
+        return mlflow.sklearn.load_model(model_info['model_uri'])
+    elif model_path and os.path.exists(model_path):
+        # Fallback to pickle file
+        import pickle
+        with open(model_path, 'rb') as f:
+            return pickle.load(f)
+    else:
+        raise FileNotFoundError("No model found")
 
 def load_test_data():
     """Load and split iris dataset for testing"""

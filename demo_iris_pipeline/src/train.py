@@ -3,6 +3,7 @@ from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
+import mlflow.sklearn
 
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_experiment("iris_demo")
@@ -19,17 +20,36 @@ with mlflow.start_run():
     mlflow.log_param("n_estimators", n_estimators)
     mlflow.log_metric("accuracy", acc)
 
-    # Save model to /output/model/ (not /tmp/model/)
-    os.makedirs("/output/model", exist_ok=True)
-    model_path = "/output/model/model.pkl"
-    print(f"Saving model to {model_path}")
-    with open(model_path, "wb") as f:
-        pickle.dump(clf, f)
-    mlflow.log_artifacts("/output/model")
-
-    # Write run info
-    run_id = mlflow.active_run().info.run_id
-    with open("/output/run_info.json", "w") as f:
-        json.dump({"run_id": run_id}, f)
+    # Log model to MLflow with sklearn flavor
+    model_info = mlflow.sklearn.log_model(
+        clf, 
+        "model",
+        registered_model_name="iris_classifier"
+    )
     
-    print("Training complete with accuracy:", acc)
+    # Register the model version
+    version = os.getenv("MODEL_VERSION", "0.2.0")
+    client = mlflow.tracking.MlflowClient()
+    model_version = client.create_model_version(
+        name="iris_classifier",
+        source=model_info.model_uri,
+        run_id=mlflow.active_run().info.run_id
+    )
+    
+    # Transition to Production
+    client.transition_model_version_stage(
+        name="iris_classifier",
+        version=model_version.version,
+        stage="Production"
+    )
+
+    # Write model info for deployment step
+    with open("/output/model_info.json", "w") as f:
+        json.dump({
+            "model_name": "iris_classifier",
+            "model_version": model_version.version,
+            "model_uri": model_info.model_uri,
+            "accuracy": acc
+        }, f)
+    
+    print(f"Model registered as iris_classifier v{model_version.version} with accuracy:", acc)

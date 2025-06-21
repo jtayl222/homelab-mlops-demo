@@ -184,12 +184,6 @@ output/
 model/
 *.pkl
 
-# Secrets and credentials (add to existing .gitignore)
-**/minio-credentials*.yaml
-**/ghcr-credentials*.yaml
-**/*-credentials*.yaml
-**/*-secret*.yaml
-
 # Temporary files
 /tmp/
 *.tmp

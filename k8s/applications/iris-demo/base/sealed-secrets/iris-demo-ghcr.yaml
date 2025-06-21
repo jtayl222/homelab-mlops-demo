@@ -1,0 +1,18 @@
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  annotations:
+    sealedsecrets.bitnami.com/cluster-wide: "true"
+  creationTimestamp: null
+  name: iris-demo-ghcr
+spec:
+  encryptedData:
+    .dockerconfigjson: AgBFoXnDXBk2zynCzGScYSDKtnmVlB+d7i1b2D2wNDGE8LkqiQuw7R2g/Jc/tsef8W8U9mZoMF2olQPt6uty2rGSG0Pnm48oBsEM2+H4BsFBq8ZMerJs7U8RSKDbhWg6lqsLUn39Nsqqz0FavjWCZWklFQooD+km1jX40ec8EvuBQQF3OrJ7Lwc9bRcVhSfAnEHvARnA3v4dXzXy1A9nKuAnQNKis0y0/daCGQ9zZah9RIn1y4GZTK9XpycgdKg4s+moO6cNNj5sstfMAsdmZJZrvAJC+bdJ7EbGPUiHJrtw5YqY8mlYyRLnmDA4/o95lqANo423UVgAL9NsKCu5hqGYt65zVFaU0Kx/eMye8ihoqNSt5mP5GFwscG/EK1J0aVC4wvWevfTr5O4htxAAdAND/jDCloOqn5csDoaYeT0z4jCrkX4N2Dp58JE3hVj7ND1u+iTKcUJ8NMFSRr9uSHCK9xpIV8vLK9Tirf5P+WY3slR67TCw2RjSZe6LlSRxe4YWrGQMs97LMbZ/6iF0V2b1JyITiYlH/ucWkXzeiEYYOhNI5Zm/IaGwgbUGGBVq99eA9FYhZ3c98Ko+QWsuHUr63wSIC08CP6OMwDN4RAN/wxh5rlSvUWXayWVAeR5VQFET67IYgg/vNu1pIPNvxFSh2Z2Azuzt4Z9jETQELlFfs6R9Wy1LAnCR7DQNFZIVe2p9rCWU7LXk6ANz7KP+oWaulu7OWUYWUpslFhnGV+CtGfEZh+R6xVa4iH/QxuvY5UC/Da3Rzw3G6bl1doCGyjQvBZRLy9iqx+X6FU3RmrHdQpQUZMUWOnB3ZO0GnGFndLcO8lsNiiDUDaNfIkO5SYqf7d9gugpbY9KKMbsndkJ1v8LZeq1WR/3rZdA4KrU9u56J+wlsH4zrfUtQoJn/MzMnxTpiYUHK50rgWTV5EtiFmekMxtynJRcm1jEIKwBcG/WpVnMTzUSA63GlD8qJm2H4vBo1zQhl3dmhfY1J6lEP
+  template:
+    metadata:
+      annotations:
+        sealedsecrets.bitnami.com/cluster-wide: "true"
+      creationTimestamp: null
+      name: iris-demo-ghcr
+    type: kubernetes.io/dockerconfigjson

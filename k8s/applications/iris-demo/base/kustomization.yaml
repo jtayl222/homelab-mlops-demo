@@ -7,8 +7,10 @@ resources:
 - rbac.yaml
 - workflow.yaml
 - configmap.yaml
-- minio-credentials-wf.yaml
-- ghcr-credentials.yaml
+- rclone-config.yaml
+- sealed-secrets/iris-demo-ghcr.yaml
+- sealed-secrets/iris-demo-minio.yaml
+- sealed-secrets/iris-demo-mlflow.yaml
 
 labels:
 - includeSelectors: false
