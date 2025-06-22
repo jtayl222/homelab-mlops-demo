@@ -4,6 +4,8 @@ metadata:
   name: iris-demo
   namespace: iris-demo
 spec:
+  imagePullSecrets:
+    - name: iris-demo-ghcr
   serviceAccountName: argo-workflow
   entrypoint: iris-pipeline
   # Add volumes at workflow level
@@ -160,7 +162,7 @@ spec:
     volumes:
     - name: docker-config
       secret:
-        secretName: ghcr-credentials
+        secretName: iris-demo-ghcr
         items:
         - key: .dockerconfigjson
           path: config.json
@@ -352,7 +354,7 @@ spec:
       command: [sh, -c]
       args:
       - |
-        set -e  # Exit on any error
+        set -e
         
         # Install system dependencies
         apt-get update && apt-get install -y curl
@@ -397,6 +399,19 @@ spec:
         mountPath: /workspace
       - name: src
         mountPath: /src
+      - name: docker-config
+        mountPath: /kaniko/.docker
+        readOnly: true
+    env:
+    - name: DOCKER_CONFIG
+      value: /kaniko/.docker
+    volumes:
+    - name: docker-config
+      secret:
+        secretName: iris-demo-ghcr
+        items:
+        - key: .dockerconfigjson
+          path: config.json
 
   - name: monitor
     inputs:
