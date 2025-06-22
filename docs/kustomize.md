@@ -1,523 +1,238 @@
-# Kustomize in MLOps: Configuration Management at Scale
+# Kustomize Configuration Guide
 
-## Why Kustomize is Required
+This document explains the Kustomize configuration structure used in the Homelab MLOps Demo project for managing Kubernetes deployments across different environments.
 
-### **The Configuration Complexity Problem**
+## Overview
 
-In production MLOps platforms, you face a configuration management nightmare:
+The project uses Kustomize to manage Kubernetes configurations with a base + overlays pattern, allowing for environment-specific customizations while maintaining a common base configuration.
 
-```yaml
-# Same application, different environments
-dev-cluster/
-├── iris-model-v1.2.0-dev
-├── resource-limits: 100m CPU, 256Mi RAM  
-├── replicas: 1
-├── storage: local-path
-└── monitoring: basic
+## Directory Structure
 
-staging-cluster/
-├── iris-model-v1.2.0-staging
-├── resource-limits: 500m CPU, 1Gi RAM
-├── replicas: 2  
-├── storage: NFS with backups
-└── monitoring: full observability
-
-production-cluster/
-├── iris-model-v1.1.5-prod  # Different version!
-├── resource-limits: 2 CPU, 4Gi RAM
-├── replicas: 5 with HPA
-├── storage: distributed with replication
-└── monitoring: SLA tracking + alerting
-```
-
-**Without Kustomize**: You maintain 3+ copies of nearly identical YAML files, leading to:
-- Configuration drift between environments
-- Manual synchronization errors
-- Security vulnerabilities (secrets in wrong places)
-- Deployment failures due to copy-paste mistakes
-
-### **The MLOps-Specific Challenges**
-
-MLOps adds unique configuration complexity:
-
-#### **1. Model Versioning**
-```yaml
-# Different model versions per environment
-containers:
-- name: iris-classifier
-  image: ghcr.io/jtayl222/iris:v1.2.0-dev    # Development
-  image: ghcr.io/jtayl222/iris:v1.1.5-prod   # Production
-```
-
-#### **2. Resource Requirements**
-```yaml
-# Training workloads need different resources than serving
-resources:
-  training:
-    requests: { cpu: "4", memory: "8Gi", nvidia.com/gpu: "1" }
-  serving:
-    requests: { cpu: "100m", memory: "256Mi" }
-```
-
-#### **3. Data Source Configuration**
-```yaml
-# Different data sources per environment
-env:
-- name: MLFLOW_TRACKING_URI
-  value: "http://mlflow-dev.mlflow.svc.cluster.local:5000"     # Dev
-  value: "https://mlflow.company.com"                          # Prod
-- name: S3_BUCKET
-  value: "ml-models-dev"      # Dev
-  value: "ml-models-prod"     # Prod
-```
-
-## Current Project Architecture
-
-### **Existing Structure**
-```
-manifests/
-├── configmaps/
-│   └── iris-src-configmap.yaml         # Single environment
-├── secrets/
-│   └── rclone-config.yaml             # Hardcoded values
-├── workflows/
-│   └── iris-workflow.yaml             # Environment-specific
-└── rbac/
-    └── argo-workflows-rbac.yaml       # Static configuration
-```
-
-### **Problems with Current Approach**
-1. **Single Environment Only**: Everything hardcoded for `argowf` namespace
-2. **No Environment Promotion**: Can't easily promote models dev → staging → prod
-3. **Secret Management**: Credentials hardcoded in YAML files
-4. **Resource Limits**: Fixed CPU/memory regardless of environment
-5. **No Multi-Tenancy**: Can't isolate different teams/projects
-
-## Kustomize Solution
-
-### **Proposed Structure**
 ```
 k8s/
-├── base/                              # Common configuration
-│   ├── kustomization.yaml
-│   ├── iris-workflow.yaml            # Base workflow template
-│   ├── seldon-deployment.yaml        # Base serving config
-│   ├── mlflow-config.yaml            # Base MLflow setup
-│   └── rbac.yaml                     # Base permissions
-├── overlays/
-│   ├── development/
-│   │   ├── kustomization.yaml        # Dev-specific patches
-│   │   ├── resource-limits.yaml     # Small resources
-│   │   ├── replicas.yaml            # Single replica
-│   │   └── secrets.yaml             # Dev credentials
-│   ├── staging/
-│   │   ├── kustomization.yaml        # Staging patches
-│   │   ├── resource-limits.yaml     # Medium resources
-│   │   ├── replicas.yaml            # 2 replicas
-│   │   └── secrets.yaml             # Staging credentials
-│   └── production/
-│       ├── kustomization.yaml        # Prod patches
-│       ├── resource-limits.yaml     # Large resources
-│       ├── replicas.yaml            # Auto-scaling enabled
-│       ├── secrets.yaml             # Prod credentials
-│       └── security-policies.yaml   # Prod-only security
-└── components/                        # Reusable pieces
-    ├── monitoring/
-    ├── backup/
-    └── security/
+├── applications/
+│   └── iris-demo/
+│       ├── base/                    # Base Kubernetes manifests
+│       │   ├── configmap.yaml
+│       │   ├── kustomization.yaml
+│       │   ├── namespace.yaml
+│       │   ├── rbac.yaml
+│       │   ├── rclone-config.yaml
+│       │   ├── sealed-secrets/      # Sealed secrets for secure credential management
+│       │   │   ├── iris-demo-ghcr.yaml
+│       │   │   ├── iris-demo-minio.yaml
+│       │   │   └── iris-demo-mlflow.yaml
+│       │   └── workflow.yaml
+│       └── overlays/
+│           └── dev/                 # Development environment customizations
+│               ├── allow-taskresults.yaml
+│               ├── kustomization.yaml
+│               ├── resource-limits.json
+│               ├── resource-limits.yaml
+│               └── seldon-deploy-rbac.yaml
+└── platform/                       # Platform-level configurations
 ```
 
-### **Example Implementation**
+## Base Configuration
 
-#### **Base Configuration** (`k8s/base/kustomization.yaml`)
+The `base/` directory contains the foundational Kubernetes manifests that are common across all environments:
+
+### Core Components
+
+- **namespace.yaml**: Defines the `iris-demo` namespace for isolating the application resources
+- **configmap.yaml**: Application configuration data and environment variables
+- **rbac.yaml**: Role-based access control configurations for the MLOps pipeline
+- **workflow.yaml**: Argo Workflows definition for the ML pipeline execution
+- **rclone-config.yaml**: Configuration for data synchronization with external storage
+
+### Sealed Secrets
+
+The `sealed-secrets/` directory contains encrypted secrets that can be safely stored in version control:
+
+- **iris-demo-ghcr.yaml**: GitHub Container Registry authentication
+- **iris-demo-minio.yaml**: MinIO object storage credentials
+- **iris-demo-mlflow.yaml**: MLflow tracking server authentication
+
+> **Note**: These are sealed secrets created using the Bitnami Sealed Secrets controller, which encrypts regular Kubernetes secrets for safe storage in Git repositories.
+
+## Development Overlay
+
+The `overlays/dev/` directory contains development-specific customizations:
+
+### Key Files
+
+- **kustomization.yaml**: Defines patches, resource modifications, and additional resources for dev
+- **resource-limits.yaml**: Development-appropriate CPU and memory limits
+- **resource-limits.json**: JSON format resource constraints for specific components
+- **allow-taskresults.yaml**: Permissions for Argo Workflows task result storage
+- **seldon-deploy-rbac.yaml**: Additional RBAC rules for Seldon model deployment
+
+## Kustomization Files
+
+### Base Kustomization
+
+The base `kustomization.yaml` typically includes:
+
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-- iris-workflow.yaml
-- seldon-deployment.yaml
-- mlflow-config.yaml
-- rbac.yaml
-
-configMapGenerator:
-- name: iris-config
-  files:
-  - train.py=../../demo_iris_pipeline/src/train.py
-  - serve.py=../../demo_iris_pipeline/src/serve.py
-  - requirements.txt=../../demo_iris_pipeline/src/requirements.txt
-```
-
-#### **Development Overlay** (`k8s/overlays/development/kustomization.yaml`)
-```yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-namespace: iris-dev
-
-resources:
-- ../../base
-
-patchesStrategicMerge:
-- resource-limits.yaml
-- replicas.yaml
-
-secretGenerator:
-- name: minio-credentials
-  literals:
-  - access-key=dev-access-key
-  - secret-key=dev-secret-key
-  
-images:
-- name: ghcr.io/jtayl222/iris
-  newTag: dev-latest
+  - namespace.yaml
+  - configmap.yaml
+  - rbac.yaml
+  - rclone-config.yaml
+  - workflow.yaml
+  - sealed-secrets/iris-demo-ghcr.yaml
+  - sealed-secrets/iris-demo-minio.yaml
+  - sealed-secrets/iris-demo-mlflow.yaml
 
 commonLabels:
-  environment: development
-  team: ml-platform
+  app: iris-demo
+  project: homelab-mlops
 ```
 
-#### **Production Overlay** (`k8s/overlays/production/kustomization.yaml`)
+### Dev Overlay Kustomization
+
+The dev overlay `kustomization.yaml` typically includes:
+
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: iris-prod
-
 resources:
-- ../../base
-- ../../components/monitoring
-- ../../components/backup
-- ../../components/security
+  - ../../base
+  - allow-taskresults.yaml
+  - seldon-deploy-rbac.yaml
 
 patchesStrategicMerge:
-- resource-limits.yaml
-- replicas.yaml
-- security-policies.yaml
-
-secretGenerator:
-- name: minio-credentials
-  literals:
-  - access-key=prod-access-key
-  - secret-key=prod-secret-key
-
-images:
-- name: ghcr.io/jtayl222/iris
-  newTag: v1.1.5  # Pinned production version
+  - resource-limits.yaml
 
 commonLabels:
-  environment: production
-  team: ml-platform
-  
-commonAnnotations:
-  deployment.kubernetes.io/revision: "42"
-  owner: "ml-platform-team@company.com"
+  environment: dev
 ```
 
-## Deployment Workflow
+## Usage
 
-### **Environment Promotion Pipeline**
+### Building Manifests
+
+To generate the final Kubernetes manifests for a specific environment:
+
 ```bash
-# Deploy to development
-kubectl apply -k k8s/overlays/development
+# Build dev environment manifests
+kustomize build k8s/applications/iris-demo/overlays/dev
 
-# Run tests, validate model performance
-./scripts/validate-deployment.sh iris-dev
-
-# Promote to staging  
-kubectl apply -k k8s/overlays/staging
-
-# Run integration tests
-./scripts/integration-tests.sh iris-staging
-
-# Deploy to production (with approval)
-kubectl apply -k k8s/overlays/production
+# Apply directly to cluster
+kustomize build k8s/applications/iris-demo/overlays/dev | kubectl apply -f -
 ```
 
-### **GitOps Integration with ArgoCD**
+### Validation
+
+Validate the Kustomize configuration:
+
+```bash
+# Validate the base configuration
+kustomize build k8s/applications/iris-demo/base --dry-run
+
+# Validate the dev overlay
+kustomize build k8s/applications/iris-demo/overlays/dev --dry-run
+```
+
+## Integration with ArgoCD
+
+This Kustomize structure is designed to work seamlessly with ArgoCD for GitOps deployments:
+
+1. ArgoCD applications point to the overlay directories
+2. Changes to the Git repository trigger automatic deployments
+3. Environment-specific configurations are maintained through overlays
+
+### ArgoCD Application Example
+
 ```yaml
-# argocd-applications.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: iris-dev
+  name: iris-demo-dev
+  namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/jtayl222/homelab-mlops-demo
     targetRevision: main
-    path: k8s/overlays/development
+    path: k8s/applications/iris-demo/overlays/dev
   destination:
-    namespace: iris-dev
----
-apiVersion: argoproj.io/v1alpha1  
-kind: Application
-metadata:
-  name: iris-prod
-spec:
-  source:
-    repoURL: https://github.com/jtayl222/homelab-mlops-demo
-    targetRevision: v1.1.5  # Tag-based deployments for prod
-    path: k8s/overlays/production
-  destination:
-    namespace: iris-prod
+    server: https://kubernetes.default.svc
+    namespace: iris-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
 ```
 
-## Alternatives to Kustomize
+## Best Practices
 
-### **1. Helm**
-**Pros**:
-- Template-based approach
-- Package management
-- Large ecosystem
-- Version management
+### Resource Management
 
-**Cons**:
-- Complex templating language
-- "Helm hell" with complex dependencies
-- Requires Tiller (v2) or complicated RBAC (v3)
-- Over-engineering for simple use cases
+- Use resource limits and requests in overlays to prevent resource contention
+- Apply appropriate resource constraints for each environment
+- Monitor resource usage and adjust limits as needed
 
-**Best For**: Complex applications with many dependencies, third-party chart ecosystem
+### Secret Management
 
-### **2. Plain YAML + Bash**
-**Pros**:
-- Simple to understand
-- No additional tooling
-- Direct kubectl apply
+- Use Sealed Secrets for sensitive data that needs to be stored in Git
+- Rotate sealed secrets regularly
+- Keep unsealed secrets out of version control
 
-**Cons**:
-- Error-prone manual management
-- No DRY principle
-- Configuration drift
-- Difficult secret management
+### Environment Separation
 
-**Best For**: Single environment, simple deployments, proof-of-concepts
+- Use distinct namespaces for different environments
+- Apply environment-specific labels for easy identification
+- Maintain separate overlay directories for each environment
 
-### **3. Jsonnet**
-**Pros**:
-- Powerful templating
-- Data templating language
-- Good for complex configurations
+### Configuration Management
 
-**Cons**:
-- Learning curve
-- Limited Kubernetes ecosystem
-- Debugging complexity
-- Over-engineering for many use cases
+- Keep environment-agnostic configuration in the base
+- Use overlays for environment-specific modifications
+- Validate configurations before deployment
 
-**Best For**: Complex configuration generation, teams with strong programming skills
+## Troubleshooting
 
-### **4. Pulumi/CDK**
-**Pros**:
-- Infrastructure as code
-- Programming language familiarity
-- Type safety
-- Cross-cloud support
+### Common Issues
 
-**Cons**:
-- State management complexity
-- Different mental model from kubectl
-- Requires programming skills
-- Additional tooling overhead
+1. **Resource conflicts**: Ensure unique names across environments
+2. **Secret decryption failures**: Verify Sealed Secrets controller is running
+3. **RBAC issues**: Check service account permissions and role bindings
+4. **Workflow failures**: Validate Argo Workflows RBAC and resource access
 
-**Best For**: Infrastructure + application deployment, teams preferring code over YAML
+### Debugging Commands
 
-### **Comparison Matrix**
-
-| Tool | Learning Curve | MLOps Fit | Multi-Env | Secret Mgmt | Ecosystem |
-|------|---------------|-----------|-----------|-------------|-----------|
-| **Kustomize** | Low | ⭐⭐⭐⭐⭐ | Excellent | Good | Native K8s |
-| **Helm** | Medium | ⭐⭐⭐⭐ | Good | Excellent | Huge |
-| **Plain YAML** | None | ⭐⭐ | Poor | Poor | N/A |
-| **Jsonnet** | High | ⭐⭐⭐ | Good | Good | Small |
-| **Pulumi** | High | ⭐⭐⭐ | Excellent | Excellent | Growing |
-
-## Gaps in Current Project & Future Work
-
-### **Immediate Gaps**
-
-#### **1. No Multi-Environment Support**
-```yaml
-# Current: Single environment hardcoded
-metadata:
-  namespace: argowf  # Hardcoded everywhere
-
-# Needed: Environment-specific configuration
-metadata:
-  namespace: iris-${ENVIRONMENT}
-```
-
-#### **2. Secret Management Anti-Patterns**
-```yaml
-# Current: Secrets in plain YAML
-stringData:
-  rclone.conf: |
-    access_key_id = ${MINIO_ACCESS_KEY}    # Environment variable
-    secret_access_key = ${MINIO_SECRET_KEY} # Not encrypted at rest
-```
-
-#### **3. No Resource Governance**
-```yaml
-# Current: No resource limits
-containers:
-- name: iris-classifier
-  # No resource requests/limits defined
-  # Could consume entire node
-```
-
-#### **4. Hardcoded Infrastructure References**
-```yaml
-# Current: Hardcoded service names
-env:
-- name: MLFLOW_TRACKING_URI
-  value: "http://mlflow.mlflow.svc.cluster.local:5000"  # Hardcoded
-```
-
-### **Future Work Roadmap**
-
-#### **Phase 1: Basic Kustomization (Week 1-2)**
-- [ ] Convert existing manifests to kustomize base
-- [ ] Create dev/staging/prod overlays
-- [ ] Implement proper secret management
-- [ ] Add resource limits and requests
-
-#### **Phase 2: Advanced Configuration (Week 3-4)**  
-- [ ] Multi-tenancy support (team namespaces)
-- [ ] External secrets integration (Vault/AWS Secrets Manager)
-- [ ] Network policies for environment isolation
-- [ ] Custom resource definitions for MLOps primitives
-
-#### **Phase 3: GitOps Integration (Week 5-6)**
-- [ ] ArgoCD application sets for multi-environment
-- [ ] Automated promotion pipelines
-- [ ] Policy-as-code with OPA Gatekeeper
-- [ ] Compliance scanning and reporting
-
-#### **Phase 4: Production Hardening (Week 7-8)**
-- [ ] Pod security policies/standards
-- [ ] Image vulnerability scanning
-- [ ] Resource quotas and limit ranges
-- [ ] Disaster recovery procedures
-
-### **Technical Debt to Address**
-
-#### **1. Configuration Sprawl**
 ```bash
-# Current scattered config files
-find . -name "*.yaml" | wc -l
-# 47 YAML files in different directories
+# Check applied resources
+kubectl get all -n iris-demo
 
-# Target: Centralized configuration management
-k8s/
-├── base/           # 5 base templates
-└── overlays/       # 3 environment overlays
+# Verify sealed secrets
+kubectl get sealedsecrets -n iris-demo
+
+# Check workflow status
+kubectl get workflows -n iris-demo
+
+# View logs
+kubectl logs -l app=iris-demo -n iris-demo
 ```
 
-#### **2. Testing Gap**
-```bash
-# Current: No configuration testing
-# Needed: Kustomize build validation
-kustomize build k8s/overlays/production | kubeval
-kustomize build k8s/overlays/production | kubectl apply --dry-run=server -f -
-```
+## Contributing
 
-#### **3. Documentation Debt**
-- [ ] Environment-specific deployment guides
-- [ ] Troubleshooting runbooks per environment  
-- [ ] Configuration parameter documentation
-- [ ] Security review procedures
+When adding new components or environments:
 
-### **Scaling Challenges to Solve**
+1. Add common configuration to the base directory
+2. Create environment-specific overlays as needed
+3. Update this documentation with new components
+4. Test configurations before merging
+5. Ensure proper RBAC permissions are in place
 
-#### **1. Multi-Model Management**
-```yaml
-# Current: Single iris model
-# Future: Multiple models per environment
-overlays/
-├── production/
-│   ├── iris-v1.1.5/
-│   ├── fraud-detection-v2.3.1/
-│   └── recommendation-engine-v1.8.2/
-```
+## Related Documentation
 
-#### **2. Cross-Cluster Deployments**
-```yaml
-# Current: Single cluster
-# Future: Multi-region, multi-cloud
-overlays/
-├── aws-us-east-1/
-├── aws-eu-west-1/
-├── gcp-us-central1/
-└── on-premises/
-```
-
-#### **3. Compliance and Governance**
-```yaml
-# Future: Policy enforcement
-policies/
-├── data-residency.yaml      # GDPR compliance
-├── model-approval.yaml      # Model governance
-├── security-scanning.yaml   # Vulnerability management
-└── audit-logging.yaml      # Compliance trails
-```
-
-## Getting Started
-
-### **Quick Migration Path**
-```bash
-# 1. Create kustomize structure
-mkdir -p k8s/{base,overlays/{dev,staging,prod}}
-
-# 2. Move existing manifests to base
-cp manifests/workflows/* k8s/base/
-cp manifests/secrets/* k8s/base/
-
-# 3. Create base kustomization  
-cat > k8s/base/kustomization.yaml <<EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-- iris-workflow.yaml
-- rclone-config.yaml
-EOF
-
-# 4. Test the build
-kustomize build k8s/base
-
-# 5. Create first overlay
-cat > k8s/overlays/dev/kustomization.yaml <<EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-namespace: iris-dev
-resources:
-- ../../base
-EOF
-
-# 6. Deploy to dev
-kubectl apply -k k8s/overlays/dev
-```
-
-### **Validation Commands**
-```bash
-# Validate kustomize syntax
-kustomize build k8s/overlays/production
-
-# Check differences between environments  
-diff <(kustomize build k8s/overlays/dev) <(kustomize build k8s/overlays/prod)
-
-# Dry-run deployment
-kustomize build k8s/overlays/staging | kubectl apply --dry-run=server -f -
-```
-
-## Conclusion
-
-Kustomize bridges the gap between simple YAML files and complex templating systems. For MLOps platforms, it provides:
-
-- **Environment Parity**: Same configuration patterns across dev/staging/prod
-- **Secret Management**: Proper handling of credentials and sensitive data
-- **Resource Governance**: Environment-appropriate resource allocation
-- **GitOps Ready**: Native integration with ArgoCD and similar tools
-
-The current project demonstrates MLOps capabilities but lacks production-ready configuration management. Kustomize provides the missing pieces for enterprise deployment patterns.
-
-**Next Steps**: Start with Phase 1 (basic kustomization) to gain immediate benefits, then gradually adopt advanced patterns as your MLOps platform matures.
+- [ArgoCD Setup](../docs/argocd-setup.md)
+- [Sealed Secrets Management](../docs/sealed-secrets.md)
+- [Environment Configuration](../docs/environment-config.md)
+- [Troubleshooting Guide](troubleshooting-simple.md)
