@@ -44,13 +44,14 @@ data:
     \"unknown\")\n            }\n        },\n        \"spec\": {\n            \"name\":
     deployment_name,\n            \"predictors\": [\n                {\n                    \"name\":
     \"default\",\n                    \"replicas\": 1,\n                    \"componentSpecs\":
-    [\n                        {\n                            \"spec\": {\n                                \"containers\":
-    [\n                                    {\n                                        \"name\":
-    \"classifier\",\n                                        \"image\": f\"ghcr.io/jtayl222/iris:{image_tag}\",\n
-    \                                       \"volumeMounts\": [\n                                            {\n
-    \                                               \"name\": \"classifier-provision-location\",\n
-    \                                               \"mountPath\": \"/mnt/models\"\n
-    \                                           }\n                                        ],\n
+    [\n                        {\n                            \"spec\": {\n                                \"imagePullSecrets\":
+    [\n                                    {\"name\": \"iris-demo-ghcr\"}\n                                ],\n
+    \                               \"containers\": [\n                                    {\n
+    \                                       \"name\": \"classifier\",\n                                        \"image\":
+    f\"ghcr.io/jtayl222/iris:{image_tag}\",\n                                        \"volumeMounts\":
+    [\n                                            {\n                                                \"name\":
+    \"classifier-provision-location\",\n                                                \"mountPath\":
+    \"/mnt/models\"\n                                            }\n                                        ],\n
     \                                       \"ports\": [\n                                            {\"containerPort\":
     8080, \"name\": \"http\", \"protocol\": \"TCP\"},  # Change from 9000 to 8080\n
     \                                           {\"containerPort\": 9500, \"name\":

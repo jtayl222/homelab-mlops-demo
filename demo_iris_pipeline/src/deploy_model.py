@@ -56,6 +56,9 @@ def generate_seldon_deployment(image_tag, model_version, metadata):
                     "componentSpecs": [
                         {
                             "spec": {
+                                "imagePullSecrets": [
+                                    {"name": "iris-demo-ghcr"}
+                                ],
                                 "containers": [
                                     {
                                         "name": "classifier",
